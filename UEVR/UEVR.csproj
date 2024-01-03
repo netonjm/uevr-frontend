@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net6.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <RootNamespace>UEVR</RootNamespace>
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
@@ -41,6 +41,19 @@
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="7.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Ini" Version="7.0.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+
+    <PackageReference Include="PeNet" Version="4.0.4" />
+    
+    <PackageReference Include="GameFinder.StoreHandlers.Steam" Version="4.0.0" />
+    <PackageReference Include="GameFinder.StoreHandlers.GOG" Version="4.0.0" />
+    <PackageReference Include="GameFinder.StoreHandlers.EGS" Version="4.0.0" />
+    <PackageReference Include="GameFinder.StoreHandlers.Origin" Version="4.0.0" />
+    <PackageReference Include="GameFinder.StoreHandlers.EADesktop" Version="4.0.0" />
+    <PackageReference Include="GameFinder.StoreHandlers.Xbox" Version="4.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\VRModManager\QuestLauncher.Core\UGMVR.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -5,136 +5,33 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-
 using System.Diagnostics;
 using System.Windows.Threading;
 using System.Runtime.InteropServices;
-using System.Runtime.CompilerServices;
 using System.IO;
 using System.Threading;
 using Microsoft.Extensions.Configuration;
 using System.ComponentModel;
 using System.Security.Principal;
+using System.Windows.Media.Imaging;
+using System.Windows.Data;
+using GameFinder.RegistryUtils;
+using GameFinder.StoreHandlers.Steam;
+using System.Windows.Media;
+using GameFinder.StoreHandlers.Steam.Services;
+using NexusMods.Paths;
+using System.Net;
+using GameFinder.Common;
+using PeNet;
+using System.Windows.Controls.Primitives;
+using System.Reflection;
+using System.Security;
+using System.Management;
+using UGMVR.Sdks.Steam;
 
-namespace UEVR {
-    class GameSettingEntry : INotifyPropertyChanged {
-        private string _key = "";
-        private string _value = "";
-        private string _tooltip = "";
-
-        public string Key { get => _key; set => SetProperty(ref _key, value); }
-        public string Value { 
-            get => _value; 
-            set { 
-                SetProperty(ref _value, value); 
-                OnPropertyChanged(nameof(ValueAsBool)); 
-            } 
-        }
-
-        public string Tooltip { get => _tooltip; set => SetProperty(ref _tooltip, value); }
-
-        public int KeyAsInt { get { return Int32.Parse(Key); } set { Key = value.ToString(); } }
-        public bool ValueAsBool { 
-            get => Boolean.Parse(Value);
-            set { 
-                Value = value.ToString().ToLower();
-            } 
-        }
-
-        public Dictionary<string, string> ComboValues { get; set; } = new Dictionary<string, string>();
-
-        public event PropertyChangedEventHandler? PropertyChanged;
-
-        protected bool SetProperty<T>(ref T storage, T value, [CallerMemberName] string? propertyName = null) {
-            if (Equals(storage, value)) return false;
-            if (propertyName == null) return false;
-
-            storage = value;
-            OnPropertyChanged(propertyName);
-            return true;
-        }
-
-        protected virtual void OnPropertyChanged(string propertyName) {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
-    };
-
-    enum RenderingMethod {
-        [Description("Native Stereo")]
-        NativeStereo = 0,
-        [Description("Synced Sequential")]
-        SyncedSequential = 1,
-        [Description("Alternating/AFR")]
-        Alternating = 2
-    };
-
-    enum SyncedSequentialMethods {
-        SkipTick = 0,
-        SkipDraw = 1,
-    };
-
-    class ComboMapping {
-
-        public static Dictionary<string, string> RenderingMethodValues = new Dictionary<string, string>(){
-            {"0", "Native Stereo" },
-            {"1", "Synced Sequential" },
-            {"2", "Alternating/AFR" }
-        };
-
-        public static Dictionary<string, string> SyncedSequentialMethodValues = new Dictionary<string, string>(){
-            {"0", "Skip Tick" },
-            {"1", "Skip Draw" },
-        };
-
-        public static Dictionary<string, Dictionary<string, string>> KeyEnums = new Dictionary<string, Dictionary<string, string>>() {
-            { "VR_RenderingMethod", RenderingMethodValues },
-            { "VR_SyncedSequentialMethod", SyncedSequentialMethodValues },
-        };
-    };
-
-    class MandatoryConfig {
-        public static Dictionary<string, string> Entries = new Dictionary<string, string>() {
-            { "VR_RenderingMethod", ((int)RenderingMethod.NativeStereo).ToString() },
-            { "VR_SyncedSequentialMethod", ((int)SyncedSequentialMethods.SkipDraw).ToString() },
-            { "VR_UncapFramerate", "true" },
-            { "VR_Compatibility_SkipPostInitProperties", "false" }
-        };
-    };
-
-    class GameSettingTooltips {
-        public static string VR_RenderingMethod =
-        "Native Stereo: The default, most performant, and best looking rendering method (when it works). Runs through the native UE stereo pipeline. Can cause rendering bugs or crashes on some games.\n" +
-        "Synced Sequential: A form of AFR. Can fix many rendering bugs. It is fully synchronized with none of the usual AFR artifacts. Causes TAA/temporal effect ghosting.\n" +
-        "Alternating/AFR: The most basic form of AFR with all of the usual desync/artifacts. Should generally not be used unless the other two are causing issues.";
-
-        public static string VR_SyncedSequentialMethod =
-        "Requires \"Synced Sequential\" rendering to be enabled.\n" +
-        "Skip Tick: Skips the engine tick on the next frame. Usually works well but sometimes causes issues.\n" +
-        "Skip Draw: Skips the viewport draw on the next frame. Works with least issues but particle effects can play slower in some cases.\n";
-
-        public static Dictionary<string, string> Entries = new Dictionary<string, string>() {
-            { "VR_RenderingMethod", VR_RenderingMethod },
-            { "VR_SyncedSequentialMethod", VR_SyncedSequentialMethod },
-        };
-    }
-
-    public class ValueTemplateSelector : DataTemplateSelector {
-        public DataTemplate? ComboBoxTemplate { get; set; }
-        public DataTemplate? TextBoxTemplate { get; set; }
-        public DataTemplate? CheckboxTemplate { get; set; }
-
-        public override DataTemplate? SelectTemplate(object item, DependencyObject container) {
-            var keyValuePair = (GameSettingEntry)item;
-            if (ComboMapping.KeyEnums.ContainsKey(keyValuePair.Key)) {
-                return ComboBoxTemplate;
-            } else if (keyValuePair.Value.ToLower().Contains("true") || keyValuePair.Value.ToLower().Contains("false")) {
-                return CheckboxTemplate;
-            } else {
-                return TextBoxTemplate;
-            }
-        }
-    }
-    public partial class MainWindow : Window {
+namespace UEVR
+{
+    public partial class ExtendedMainWindow : Window {
         // variables
         // process list
         private List<Process> m_processList = new List<Process>();
@@ -157,7 +54,7 @@ namespace UEVR {
         private string? m_commandLineAttachExe = null;
         private bool m_ignoreFutureVDWarnings = false;
 
-        public MainWindow() {
+        public ExtendedMainWindow() {
             InitializeComponent();
 
             // Grab the command-line arguments
@@ -177,6 +74,9 @@ namespace UEVR {
             return principal.IsInRole(WindowsBuiltInRole.Administrator);
         }
         private void MainWindow_Loaded(object sender, RoutedEventArgs e) {
+
+            processMonitor = new ProcessMonitor();
+
             if (!IsAdministrator()) {
                 m_nNotificationsGroupBox.Visibility = Visibility.Visible;
                 m_restartAsAdminButton.Visibility = Visibility.Visible;
@@ -191,8 +91,214 @@ namespace UEVR {
 
             m_updateTimer.Tick += (sender, e) => Dispatcher.Invoke(MainWindow_Update);
             m_updateTimer.Start();
+
+            // Custom Games
+            AddSomeRandomGames();
+            AddSteamGames();
+
+            RefreshGameList();
         }
 
+        private string GetIdentifier(IGame game)
+        {
+            if (game is SteamGame steamGame)
+            {
+                return $"steam_{steamGame.AppId}";
+            }
+            throw new NotImplementedException("");
+        }
+
+        public string GetImageIconFilePath(SteamGame game)
+        {
+            var expectedPath = Path.Combine(GetEGlobalImageDir(), $"{GetIdentifier(game)}_header.jpg");
+            if (!File.Exists(expectedPath))
+            {
+                using (WebClient webClient = new WebClient())
+                {
+                    try
+                    {
+                        webClient.DownloadFile($"https://cdn.cloudflare.steamstatic.com/steam/apps/{game.AppId}/capsule_231x87.jpg", expectedPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error al descargar la imagen: {ex.Message}");
+                    }
+                }
+            }
+            return expectedPath;
+        }
+      
+        void AddSteamGames()
+        {
+            // elimino juegos
+
+            //itero en el proveedor y añador
+            var fileSystem = FileSystem.Shared;
+            var registry = WindowsRegistry.Shared;
+
+
+            var steamHandler = new SteamHandler(fileSystem, registry);
+
+            var steamDirectoryPath = SteamLocationFinder.FindSteam(fileSystem, registry).Value.ToString();
+            var steamManifests = SteamAppInfoFile.FromSteamDirectory(steamDirectoryPath);
+
+            var steamGames = Games.Where(s => s.ProviderId == "Steam");
+
+            //iterate between all the games
+            foreach (var game in steamHandler.FindAllGames())
+            {
+                if (game.Value is SteamGame steamGame)
+                {
+                    // si no lo encuentra lo añade
+                    var uEVRGame = steamGames.FirstOrDefault(s => s.GameManifest is SteamGameManifest manifest && manifest.AppId == steamGame.AppId.Value);
+                    if (uEVRGame == null)
+                    {
+                        var executable = new Executable()
+                        {
+                            //Architecture = "x64",
+                            OperatingSystem = "Windows",
+                            //Path = "F:\\XboxGames\\Hi-Fi RUSH\\Content\\Hibiki\\Binaries\\WinGDK\\Hi-Fi-RUSH.exe",
+                            Engine = new Engine()
+                            {
+                                Brand = "Unreal",
+                                Version = new Version(4, 3, 21)
+                            }
+                        };
+
+                        var gameManifest = new SteamGameManifest()
+                        {
+                            AppId = (int)steamGame.AppId.Value,
+                            Description = steamGame.Name,
+                            Executable = executable
+                        };
+
+                        uEVRGame = new UEVRGame()
+                        {
+                            Name = steamGame.Name,
+                            ProviderId = "Steam",
+                            GameManifest = gameManifest,
+                            Id = Guid.NewGuid().ToString(),
+                            ThumbnailUrl = GetImageIconFilePath(steamGame)
+                        };
+
+                        var steamApp = steamManifests.Apps.FirstOrDefault(s => s.AppId == steamGame.AppId);
+                        if (steamApp != null)
+                        {
+                            //var appInfoDictionary = steamApp.GetDictionary("appinfo");
+                            //var extendedDictionary = appInfoDictionary.GetDictionary("extended");
+                            //var commonDictionary = appInfoDictionary.GetDictionary("common");
+                            //var configDictionary = appInfoDictionary.GetDictionary("config");
+
+                            //uEVRGame.Description = appInfoDictionary.GetValue<string>("description");
+
+                            //uEVRGame.Name = commonDictionary.GetValue<string>("name");
+                            //uEVRGame.Language = commonDictionary.GetDictionaryKeyValues("languages");
+                            //uEVRGame.Developer = extendedDictionary.GetValue<string>("developer");
+                            //uEVRGame.Publisher = extendedDictionary.GetValue<string>("publisher");
+                            //uEVRGame.IsFree = extendedDictionary.GetValue<int>("isfreeapp") == 1;
+
+                            //uEVRGame.ReleaseDate = commonDictionary.GetValue<int>("steam_release_date");
+                            //uEVRGame.OriginalReleaseDate = commonDictionary.GetValue<int>("original_release_date");
+
+                            //xecutable
+                            //var launchConfiguration = configDictionary.GetDictionary("launch", "0");
+                           
+                            //uEVRGame.IsVR = launchConfiguration.GetValue<string>("type") == "vr";
+                            //uEVRGame.OsList = launchConfiguration.GetValue<string>("config", "oslist") ?? commonDictionary.GetValue<string>("oslist");
+                            //uEVRGame.OsArch = launchConfiguration.GetValue<string>("config", "osarch") ?? commonDictionary.GetValue<string>("betakey");
+
+                            //var executableUrl = launchConfiguration.GetValue<string>("executable");
+                            //if (Path.HasExtension(executableUrl))
+                            //{
+                            //    executableUrl = Path.Combine(steamGame.Path.ToString().Replace('/', '\\'), executableUrl);
+                            //}
+                            //executable.Path = executableUrl;
+                        }
+
+                        // is unreal
+                        //if (UnrealEngineUtils.IsUnrealExe(executable.Path))
+                        //{
+                        //    UnrealEngineUtils.PopulateExecutableMetadata(uEVRGame);
+                        //    //var fileMetadata =  MetadataHelper.GetMetadataFromExecutableFilePath(executable.Path);
+                        //    Console.WriteLine("");
+
+                        //    // versioning
+                          
+                        //}
+
+                        Games.Add(uEVRGame);
+                        GameRows.Add(new UEVRGameRowView(uEVRGame));
+                    }
+                }
+            }
+            //mark from deleteion non existing games
+        }
+
+
+
+        bool IsUnrealGameFolder(string directoryPath)
+        {
+            if (Directory.Exists(directoryPath))
+            {
+                if (Directory.Exists(Path.Combine(directoryPath, "Engine", "Binaries")))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        List<UEVRGame> Games = new();
+        List<UEVRGameRowView> GameRows = new();
+        List<UEVRGameRowView> FilteredGameRows = new();
+
+        void AddSomeRandomGames()
+        {
+            var hify = new UEVRGame()
+            {
+                Name = "Hi-Fi-RUSH",
+                ProviderId = "Manual",
+                Id = "1231214123123412",
+                GameManifest = new SteamGameManifest()
+                {
+                    AppId = 2323123,
+                    AppType = "",
+                    Description = "Hi-Fi-RUSH",
+                    Executable = new Executable()
+                    {
+                        Architecture = "x86",
+                        OperatingSystem = "Windows",
+                        Path = "F:\\XboxGames\\Hi-Fi RUSH\\Content\\Hibiki\\Binaries\\WinGDK\\Hi-Fi-RUSH.exe",
+                        Engine = new Engine()
+                        {
+                            Brand = "Unreal",
+                            Version = new Version(4, 3, 21)
+                        }
+                    }
+                },
+                ThumbnailUrl = "C:\\Program Files (x86)\\Steam\\appcache\\librarycache\\10_header.jpg"
+            };
+            
+            Games.Add(hify);
+            GameRows.Add(new UEVRGameRowView(hify));
+        }
+
+        void RefreshGameList()
+        {
+            ResultListView.ItemsSource = null;
+            FilteredGameRows.Clear();
+            FilteredGameRows.AddRange(GameRows.Where(s => s.Name.Contains(SearchField.Text, StringComparison.InvariantCultureIgnoreCase)));
+            ResultListView.ItemsSource = FilteredGameRows;
+        }
+
+        private void ListViewItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            var item = sender as ListViewItem;
+            if (item != null && item.IsSelected)
+            {
+                //Do your stuff
+            }
+        }
         private static bool IsExecutableRunning(string executableName) {
             return Process.GetProcesses().Any(p => p.ProcessName.Equals(executableName, StringComparison.OrdinalIgnoreCase));
         }
@@ -220,7 +326,9 @@ namespace UEVR {
                 // Attempt to start the process
                 Process.Start(processInfo);
             } catch (Win32Exception ex) {
+
                 // Handle the case when the user cancels the UAC prompt or there's an error
+                if (!silent)
                 MessageBox.Show($"Error: {ex.Message}\n\nThe application will continue running without administrator privileges.", "Failed to Restart as Admin", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -361,6 +469,36 @@ namespace UEVR {
             lastInjectorStatusUpdate = now;
         }
 
+        private string GetEGlobalImageDir()
+        {
+            string directory = Path.Combine(GetEGlobalCacheDir(), "images");
+
+            if (!Directory.Exists(directory))
+                Directory.CreateDirectory(directory);
+            return directory;
+        }
+
+        private string GetEGlobalCacheDir()
+        {
+            string directory = Path.Combine(GetEGlobalDir(), "cache");
+
+            if (!Directory.Exists(directory))
+                Directory.CreateDirectory(directory);
+            return directory;
+        }
+
+        private string GetEGlobalDir()
+        {
+            string directory = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            directory += "\\UnrealVR";
+
+            if (!Directory.Exists(directory))
+                Directory.CreateDirectory(directory);
+
+            return directory;
+        }
+
+        [Obsolete("Use GetEGlobalGameDir")]
         private string GetGlobalDir() {
             string directory = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
 
@@ -373,6 +511,15 @@ namespace UEVR {
             return directory;
         }
 
+        private string GetEGlobalGameDir(string gameName)
+        {
+            string directory = Path.Combine(GetEGlobalCacheDir(), gameName);
+            if (!Directory.Exists(directory))
+                Directory.CreateDirectory(directory);
+            return directory;
+        }
+
+        [Obsolete("Use GetEGlobalGameDir")]
         private string GetGlobalGameDir(string gameName) {
             string directory = GetGlobalDir() + "\\" + gameName;
 
@@ -391,7 +538,7 @@ namespace UEVR {
 
         private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) {
             if (e.ChangedButton == MouseButton.Left) {
-                this.DragMove();
+                //this.DragMove();
             }
         }
 
@@ -406,7 +553,7 @@ namespace UEVR {
             return directory;
         }
 
-        private void OpenGlobalDir_Clicked(object sender, RoutedEventArgs e) {
+        protected void OpenGlobalDir_Clicked(object sender, MouseButtonEventArgs e) {
             string directory = GetGlobalDirPath();
 
             if (!System.IO.Directory.Exists(directory)) {
@@ -416,7 +563,8 @@ namespace UEVR {
             NavigateToDirectory(directory);
         }
 
-        private void OpenGameDir_Clicked(object sender, RoutedEventArgs e) {
+        protected void OpenGameDir_Clicked(object sender, MouseButtonEventArgs e)
+        {
             if (m_lastSharedData == null) {
                 return;
             }
@@ -428,7 +576,8 @@ namespace UEVR {
 
             NavigateToDirectory(directory);
         }
-        private void ExportConfig_Clicked(object sender, RoutedEventArgs e) {
+        private void ExportConfig_Clicked(object sender, MouseButtonEventArgs e)
+        {
             if (!m_connected) {
                 MessageBox.Show("Inject into a game first!");
                 return;
@@ -459,7 +608,8 @@ namespace UEVR {
             NavigateToDirectory(exportedConfigsDir);
         }
 
-        private void ImportConfig_Clicked(object sender, RoutedEventArgs e) {
+        private void ImportConfig_Clicked(object sender, MouseButtonEventArgs e)
+        {
             var importPath = GameConfig.BrowseForImport(GetGlobalDirPath());
 
             if (importPath == null) {
@@ -495,9 +645,7 @@ namespace UEVR {
                     SharedMemory.SendCommand(SharedMemory.Command.ReloadConfig);
                 }
             } catch (Exception ex) {
-                if (!skipAlertMessages) {
-                    MessageBox.Show("An error occurred: " + ex.Message);
-                }
+                MessageBox.Show("An error occurred: " + ex.Message);
             }
         }
 
@@ -511,8 +659,9 @@ namespace UEVR {
             if (IsExecutableRunning("VirtualDesktop.Streamer")) {
                 m_virtualDesktopWarned = true;
                 var dialog = new VDWarnDialog();
+                dialog.Topmost = true;
                 dialog.ShowDialog();
-
+              
                 if (dialog.DialogResultOK) {
                     if (dialog.HideFutureWarnings) {
                         m_ignoreFutureVDWarnings = true;
@@ -930,11 +1079,13 @@ namespace UEVR {
 
             var index = m_processListBox.SelectedIndex;
             var process = m_processList[index];
-            if (process == null) {
+
+            if (process == null)
+            {
                 return;
             }
 
-            if (TryGetProcess(out var newProcess))
+            if (TryGetNewProcess(out var newProcess))
             {
                 process = newProcess;
                 m_processList[index] = newProcess;
@@ -945,7 +1096,8 @@ namespace UEVR {
             InjectProcess(process);
         }
 
-        public void InjectProcess(Process process)
+        bool silent = false;
+        void InjectProcess(Process process)
         {
             string runtimeName;
 
@@ -969,11 +1121,13 @@ namespace UEVR {
                 {
                     if (!Injector.CallFunctionNoArgs(process.Id, "UEVRPluginNullifier.dll", nullifierBase, "nullify", true))
                     {
+                        if (!silent)
                         MessageBox.Show("Failed to nullify VR plugins.");
                     }
                 }
                 else
                 {
+                    if (!silent)
                     MessageBox.Show("Failed to inject plugin nullifier.");
                 }
             }
@@ -984,37 +1138,40 @@ namespace UEVR {
             }
         }
 
-        private bool TryGetProcess(out Process? p) {
-            
+        bool TryGetNewProcess(out Process process)
+        {
+            process = default;
+
             // Double check that the process we want to inject into exists
             // this can happen if the user presses inject again while
             // the previous combo entry is still selected but the old process
             // has died.
-            p = null;
-
-            try {
+            try
+            {
                 var verifyProcess = Process.GetProcessById(m_lastSelectedProcessId);
 
-                if (verifyProcess == null || verifyProcess.HasExited || verifyProcess.ProcessName != m_lastSelectedProcessName) {
-                    
+                if (verifyProcess == null || verifyProcess.HasExited || verifyProcess.ProcessName != m_lastSelectedProcessName)
+                {
                     var processes = Process.GetProcessesByName(m_lastSelectedProcessName);
-                    if (processes == null || processes.Length == 0 || !AnyInjectableProcesses(processes)) {
+
+                    if (processes == null || processes.Length == 0 || !AnyInjectableProcesses(processes))
+                    {
                         return false;
                     }
 
-                    foreach (var candidate in processes) {
-                        if (IsInjectableProcess(candidate)) {
-                            p = candidate;
+                    foreach (var candidate in processes)
+                    {
+                        if (IsInjectableProcess(candidate))
+                        {
+                            process = candidate;
                             return true;
                         }
                     }
-                    return true;
                 }
             }
-            catch (Exception ex) {
-                if (!skipAlertMessages) {
-                    MessageBox.Show(ex.Message);
-                }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
             }
             return false;
         }
@@ -1109,37 +1266,13 @@ namespace UEVR {
                         {
                             m_processList.Add(process);
                             m_processList.Sort((a, b) => a.ProcessName.CompareTo(b.ProcessName));
-                            m_processListBox.Items.Clear();
-
-                            foreach (Process p in m_processList) {
-                                string processName = GenerateProcessName(p);
-                                m_processListBox.Items.Add(processName);
-
-                                if (m_processListBox.SelectedItem == null && m_processListBox.Items.Count > 0) {
-                                    if (m_lastDefaultProcessListName == null || m_lastDefaultProcessListName == processName) {
-                                        m_processListBox.SelectedItem = m_processListBox.Items[m_processListBox.Items.Count - 1];
-                                        m_lastDefaultProcessListName = processName;
-                                    }
-                                }
-                            }
+                            RefreshProcessComboBox();
                         });
                     }
 
                     Application.Current.Dispatcher.Invoke(() =>
                     {
-                        m_processListBox.Items.Clear();
-
-                        foreach (Process process in m_processList) {
-                            string processName = GenerateProcessName(process);
-                            m_processListBox.Items.Add(processName);
-
-                            if (m_processListBox.SelectedItem == null && m_processListBox.Items.Count > 0) {
-                                if (m_lastDefaultProcessListName == null || m_lastDefaultProcessListName == processName) {
-                                    m_processListBox.SelectedItem = m_processListBox.Items[m_processListBox.Items.Count - 1];
-                                    m_lastDefaultProcessListName = processName;
-                                }
-                            }
-                        }
+                        RefreshProcessComboBox();
                     });
                 });
             } finally {
@@ -1147,17 +1280,86 @@ namespace UEVR {
             }
         }
 
-        private Process? WaitForProcess (string processName, int maxRetry = 1, int retryTimeInMiliseconds = 1000) {
-            for (int i = 0; i < maxRetry && !m_connected; i++) {
-                if (i > 0) {
+        private void RefreshProcessComboBox()
+        {
+            m_processListBox.Items.Clear();
+
+            foreach (Process p in m_processList)
+            {
+                string processName = GenerateProcessName(p);
+                m_processListBox.Items.Add(processName);
+
+                if (m_processListBox.SelectedItem == null && m_processListBox.Items.Count > 0)
+                {
+                    if (m_lastDefaultProcessListName == null || m_lastDefaultProcessListName == processName)
+                    {
+                        m_processListBox.SelectedItem = m_processListBox.Items[m_processListBox.Items.Count - 1];
+                        m_lastDefaultProcessListName = processName;
+                    }
+                }
+            }
+        }
+
+        private void GridViewColumnHeader_Click(object sender, RoutedEventArgs e)
+        {
+            var list = (ListView)sender;
+            GridViewColumnHeader colHeader = (GridViewColumnHeader)e.OriginalSource;
+            string colName = colHeader.Content.ToString();
+
+            CollectionView view = (CollectionView)CollectionViewSource.GetDefaultView(list.ItemsSource);
+            view.SortDescriptions.Add(new SortDescription(colName, ListSortDirection.Ascending));
+
+            view.Refresh();
+        }
+
+        UEVRGameRowView selectedItem;
+
+        private void ResultListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (e.AddedItems[0] is UEVRGameRowView r)
+            {
+                selectedItem = r;
+                RefreshGameData();
+            }
+        }
+
+        private void RefreshGameData()
+        {
+            oLaunch.IsEnabled = selectedItem != null && File.Exists(selectedItem.Executable);
+
+        }
+
+        private void Window_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            Window w = (Window)sender;
+            GameListScrollView.MaxHeight = w.ActualHeight - 110;
+            ContentScrollView.MaxHeight = Math.Max(w.ActualHeight - 100, 100);
+        }
+
+        private void TextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            RefreshGameList();
+        }
+        
+        bool skipAlertMessages = false;
+
+        private Process? WaitForProcess(string processName, int maxRetry = 1, int retryTimeInMiliseconds = 1000)
+        {
+            for (int i = 0; i < maxRetry && !m_connected; i++)
+            {
+                if (i > 0)
+                {
                     Thread.Sleep(retryTimeInMiliseconds);
                 }
 
-                foreach (var p in Process.GetProcesses()) {
-                    if (!IsInjectableProcess(p)) {
+                foreach (var p in Process.GetProcesses())
+                {
+                    if (!IsInjectableProcess(p))
+                    {
                         continue;
                     }
-                    if (processName == p.ProcessName) {
+                    if (processName == p.ProcessName)
+                    {
                         return p;
                     }
                 }
@@ -1165,42 +1367,162 @@ namespace UEVR {
             return null;
         }
 
-        bool skipAlertMessages = false;
+        class ProcessMonitor
+        {
+            public event EventHandler<Process> NewProcessDetected;
+            ManagementEventWatcher processStartWatcher;
+            public void StartMonitoring(string Path)
+            {
+                // Crear un objeto para seguir los eventos de inicio de nuevos procesos
+                processStartWatcher = new ManagementEventWatcher(new WqlEventQuery("SELECT * FROM Win32_ProcessStartTrace"));
+                processStartWatcher.EventArrived += ProcessStarted;
 
-        internal void AttachToProcess(AppArguments arguments) {
-            var executableDirectory = System.IO.Path.GetDirectoryName(arguments.Executable);
+                // Comenzar a monitorear
+                processStartWatcher.Start();
+            }
+
+            void Stop()
+            {
+                processStartWatcher.Stop();
+            }
+
+            private void ProcessStarted(object sender, EventArrivedEventArgs e)
+            {
+                Console.WriteLine($"Nuevo proceso detectado: {e.NewEvent}");
+
+                // Lanzar el evento de nuevo proceso detectado
+                //OnNewProcessDetected(e.NewEvent.);
+            }
+
+            //protected virtual void OnNewProcessDetected(Proc processName)
+            //{
+            //    // Verificar si hay manejadores de eventos suscritos
+            //    if (NewProcessDetected != null)
+            //    {
+            //        // Lanzar el evento
+            //        NewProcessDetected.Invoke(this, processName);
+            //    }
+            //}
+        }
+
+        ProcessMonitor processMonitor;
+
+        private void oLaunch_Click(object sender, RoutedEventArgs e)
+        {
+            var selected = selectedItem;
+            if (selected == null)
+                return;
 
             skipAlertMessages = true;
 
-            var processCandidate = WaitForProcess(arguments.ProcessName);
-            processCandidate?.CloseMainWindow();
+            //var processCandidate = WaitForProcess(arguments.ProcessName);
+            //processCandidate?.CloseMainWindow();
 
             Process p = new();
-            p.StartInfo.FileName = arguments.Executable;
-            p.StartInfo.Arguments = arguments.Arguments;
-            p.StartInfo.WorkingDirectory = arguments.WorkingDirectory ?? executableDirectory;
+            p.StartInfo.FileName = selected.Executable;
+            p.StartInfo.Arguments = "";
+            p.StartInfo.WorkingDirectory = Path.GetDirectoryName(selected.Executable);
             p.Start();
 
-            processCandidate = WaitForProcess(arguments.ProcessName, maxRetry: 10);
-            if (processCandidate != null) {
-                m_lastDefaultProcessListName = GenerateProcessName(processCandidate);
-            }
+            //var processCandidate = WaitForProcess(arguments.ProcessName, maxRetry: 10);
+            //if (processCandidate != null)
+            //{
+            //    m_lastDefaultProcessListName = GenerateProcessName(processCandidate);
+            //}
 
-            if (processCandidate != null) {
-                int max = 10;
-                for (int i = 0; i < max && !m_connected; i++) {
-                    processCandidate = WaitForProcess(arguments.ProcessName);
-                    if (processCandidate == null) {
-                        continue;
-                    }
+            //if (processCandidate != null)
+            //{
+            //    int max = 10;
+            //    for (int i = 0; i < max && !m_connected; i++)
+            //    {
+            //        processCandidate = WaitForProcess(arguments.ProcessName);
+            //        if (processCandidate == null)
+            //        {
+            //            continue;
+            //        }
 
-                    InitializeConfig(processCandidate.ProcessName);
-                    InjectProcess(processCandidate);
+            //        InitializeConfig(processCandidate.ProcessName);
+            //        InjectProcess(processCandidate);
 
-                    Update_InjectorConnectionStatus();
-                }
-            }
+            //        Update_InjectorConnectionStatus();
+            //    }
+            //}
             skipAlertMessages = false;
+
+            //Button OpenPopupButton = (Button)sender;
+
+            //// Crear un nuevo Popup
+            //Popup popup = new Popup();
+
+            //// Crear contenido para el Popup (puede ser cualquier control)
+            //TextBlock popupContent = new TextBlock();
+            //popupContent.Text = "¡Hola, este es un Popup!";
+            //popupContent.Margin = new Thickness(10);
+
+            //// Establecer el contenido del Popup
+            //popup.Child = popupContent;
+
+            //// Establecer propiedades adicionales del Popup según sea necesario
+            //popup.PlacementTarget = sender as UIElement;
+            //popup.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            //popup.HorizontalOffset = OpenPopupButton.ActualWidth/2 - 70; // Centrar horizontalmente
+
+            //popup.IsOpen = true;
         }
     }
+
+    internal static class ImageHelper
+    {
+        public static ImageSource? GetImage(string imagePath)
+        {
+            if (!File.Exists(imagePath)) { return null; };
+            // Crea una nueva instancia de BitmapImage
+            BitmapImage bitmapImage = new BitmapImage();
+            // Asigna la URI de la imagen al BitmapImage
+            bitmapImage.BeginInit();
+            bitmapImage.UriSource = new Uri(imagePath, UriKind.RelativeOrAbsolute);
+            bitmapImage.EndInit();
+            return bitmapImage;
+        }
+    }
+
+    // Clase de ejemplo para representar los datos
+    internal class UEVRGameRowView
+    {
+        internal UEVRGame game;
+
+        public UEVRGameRowView()
+        {
+
+        }
+
+        public UEVRGameRowView(UEVRGame hify)
+        {
+            SetGame(hify);
+        }
+
+        public void SetGame(UEVRGame game)
+        {
+            this.game = game;
+
+            this.Name = this.game.Name;
+            this.Provider = this.game.ProviderId;
+            this.Description = "This is a test";
+            this.Engine = this.game.GameManifest.Executable.Engine.Brand;
+            this.Version = this.game.GameManifest.Executable.Engine.VersionString?.ToString() ?? string.Empty;
+            this.Image = ImageHelper.GetImage(this.game.ThumbnailUrl ?? "C:\\Program Files (x86)\\Steam\\appcache\\librarycache\\80_library_hero_blur");
+            this.Executable = this.game.GameManifest.Executable.Path;
+        }
+
+        public string Executable { get; set; }
+
+        public string Name { get; set; }
+        public string Description { get; set; }
+        public string Tooltip { get; set; }
+        public string Provider { get; set; }
+        public string Engine { get; set; }
+        public string Version { get; set; }
+        public ImageSource Image { get; set; }
+    }
+
 }
