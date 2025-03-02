@@ -13,7 +13,7 @@
         Background="#FF1A1B1C"
         FontFamily="{DynamicResource MaterialDesignFont}"
         mc:Ignorable="d"
-        Title="UEVR"
+        Title="APV Game Launcher"
         Closing="MainWindow_Closing" Loaded="MainWindow_Loaded"
         SizeToContent="WidthAndHeight" ResizeMode="NoResize" Icon="/UEVR2.png"
         WindowStartupLocation="CenterScreen"
@@ -155,7 +155,9 @@
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal">
                                     <ToggleButton x:Name="m_focusGameOnInjectionCheckbox" HorizontalAlignment="Left" IsChecked="True"/>
-                                    <TextBlock TextWrapping="Wrap" Text="Focus game on injection"/>
+                                    <TextBlock
+                                            Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"
+                                            TextWrapping="Wrap" Text="Focus game on injection"/>
                                 </StackPanel>
                             </StackPanel>
                             <TextBlock x:Name="m_connectionStatus" TextWrapping="Wrap" Text="Unknown status"/>

@@ -14,7 +14,7 @@
         SizeToContent="WidthAndHeight" ResizeMode="NoResize" Icon="/UEVR2.png"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
-        Title="VD Warning" Height="200" Width="400">
+        Title="Surreal Touch Warning" Height="200" Width="400">
     <Border BorderBrush="#FF3D3D40" BorderThickness="2">
         <StackPanel>
             <Border MouseLeftButtonDown="TitleBar_MouseLeftButtonDown" Background="#FF1A1B1C">
@@ -36,7 +36,20 @@
                        Foreground="White" />
                 </DockPanel>
             </Border>
-            <TextBlock Text="Virtual Desktop has been detected running.&#x0a;Make sure you use OpenXR for the least issues." Margin="10" />
+            <TextBlock Text="The Surreal Streaming App has been detected running.&#x0a;
+For the best experience, ensure that SteamVR is configured to use OpenXR.&#x0a;
+- Check that your headset is properly connected.&#x0a;
+- Use a stable network connection to reduce latency.&#x0a;
+- Close unnecessary background applications for better performance.&#x0a;
+- Restart SteamVR if you encounter tracking issues.&#x0a;
+- Adjust the encoding settings in the profile manager for optimal streaming quality.&#x0a;&#x0a;
+
+General Settings:&#x0a;
+- SteamVR Home: OFF&#x0a;
+- SteamVR Always Visible: ON&#x0a;&#x0a;
+
+OpenXR Configuration:&#x0a;
+- OpenXR Runtime: SteamVR&#x0a;" Margin="10" TextWrapping="Wrap" />
             <CheckBox x:Name="chkHideWarning" Content="Hide future warnings" Margin="10" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="10">
                 <Button x:Name="btnOK" Content="OK" Width="75" Margin="5" Click="btnOK_Click" />

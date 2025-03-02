@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net6.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <RootNamespace>UEVR</RootNamespace>
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
@@ -17,7 +17,7 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <Optimize>True</Optimize>
+    <Optimize>False</Optimize>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,6 +25,14 @@
     <None Remove="donate.png" />
     <None Remove="FilteredExecutables.json" />
     <None Remove="github.png" />
+    <None Remove="Resources\Images\Meta.png" />
+    <None Remove="Resources\Images\REEngine.png" />
+    <None Remove="Resources\Images\shortcut.png" />
+    <None Remove="Resources\Images\Steam.png" />
+    <None Remove="Resources\Images\Unity.png" />
+    <None Remove="Resources\Images\Unreal.png" />
+    <None Remove="Resources\Images\UnrealEngine.png" />
+    <None Remove="Resources\Images\UnrealVR.png" />
     <None Remove="UEVR.png" />
     <None Remove="UEVR2.png" />
   </ItemGroup>
@@ -43,12 +51,47 @@
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="7.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Ini" Version="7.0.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+
+    <PackageReference Include="PeNet" Version="4.0.4" />
+    
+    <PackageReference Include="GameFinder.StoreHandlers.Steam" Version="4.0.0" />
+    <PackageReference Include="GameFinder.StoreHandlers.GOG" Version="4.0.0" />
+    <PackageReference Include="GameFinder.StoreHandlers.EGS" Version="4.0.0" />
+    <PackageReference Include="GameFinder.StoreHandlers.Origin" Version="4.0.0" />
+    <PackageReference Include="GameFinder.StoreHandlers.EADesktop" Version="4.0.0" />
+    <PackageReference Include="GameFinder.StoreHandlers.Xbox" Version="4.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\VRModManager\QuestLauncher.Core\UGMVR.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Resource Include="discord.png" />
     <Resource Include="donate.png" />
     <Resource Include="github.png" />
+    <Resource Include="Resources\Images\Meta.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Resources\Images\REEngine.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Resources\Images\shortcut.png" />
+    <Resource Include="Resources\Images\Steam.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Resources\Images\Unity.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Resources\Images\Unreal.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Resources\Images\UnrealEngine.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Resources\Images\UnrealVR.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
     <Resource Include="UEVR2.png" />
   </ItemGroup>
 

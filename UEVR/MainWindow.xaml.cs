@@ -1,35 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 
 using System.Diagnostics;
-using System.Security.Policy;
 using System.Windows.Threading;
-using System.Reflection;
-using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
-using System.Windows.Markup;
-using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.IO;
 using System.Threading;
-
-using Microsoft.Extensions.Configuration.Ini;
 using Microsoft.Extensions.Configuration;
 using System.ComponentModel;
-using static UEVR.SharedMemory;
-using System.Threading.Channels;
 using System.Security.Principal;
 using System.Windows.Media.Animation;
 
@@ -38,6 +22,7 @@ namespace UEVR {
         private string _key = "";
         private string _value = "";
         private string _tooltip = "";
+        private string _extraInfo = "";
 
         public string Key { get => _key; set => SetProperty(ref _key, value); }
         public string Value { 
@@ -47,8 +32,8 @@ namespace UEVR {
                 OnPropertyChanged(nameof(ValueAsBool)); 
             } 
         }
-
-        public string Tooltip { get => _tooltip; set => SetProperty(ref _tooltip, value); }
+		
+		public string Tooltip { get => _tooltip; set => SetProperty(ref _tooltip, value); }
 
         public int KeyAsInt { get { return Int32.Parse(Key); } set { Key = value.ToString(); } }
         public bool ValueAsBool { 
@@ -563,7 +548,9 @@ namespace UEVR {
                     }
                 }
             } catch (Exception ex) {
-                MessageBox.Show("An error occurred: " + ex.Message);
+                if (!skipAlertMessages) {
+                    MessageBox.Show("An error occurred: " + ex.Message);
+                }
             }
         }
 
@@ -1003,65 +990,56 @@ namespace UEVR {
             }
 
             var selectedProcessName = m_processListBox.SelectedItem;
-
             if (selectedProcessName == null) {
                 return;
             }
 
             var index = m_processListBox.SelectedIndex;
             var process = m_processList[index];
-
             if (process == null) {
                 return;
             }
 
-            // Double check that the process we want to inject into exists
-            // this can happen if the user presses inject again while
-            // the previous combo entry is still selected but the old process
-            // has died.
-            try {
-                var verifyProcess = Process.GetProcessById(m_lastSelectedProcessId);
-
-                if (verifyProcess == null || verifyProcess.HasExited || verifyProcess.ProcessName != m_lastSelectedProcessName) {
-                    var processes = Process.GetProcessesByName(m_lastSelectedProcessName);
-
-                    if (processes == null || processes.Length == 0 || !AnyInjectableProcesses(processes)) {
-                        return;
-                    }
-
-                    foreach (var candidate in processes) {
-                        if (IsInjectableProcess(candidate)) {
-                            process = candidate;
-                            break;
-                        }
-                    }
-
-                    m_processList[index] = process;
-                    m_processListBox.Items[index] = GenerateProcessName(process);
-                    m_processListBox.SelectedIndex = index;
-                }
-            } catch(Exception ex) {
-                MessageBox.Show(ex.Message);
-                return;
+            if (TryGetProcess(out var newProcess))
+            {
+                process = newProcess;
+                m_processList[index] = newProcess;
+                m_processListBox.Items[index] = GenerateProcessName(newProcess);
+                m_processListBox.SelectedIndex = index;
             }
 
+            InjectProcess(process);
+        }
+
+        public void InjectProcess(Process process)
+        {
             string runtimeName;
 
-            if (m_openvrRadio.IsChecked == true) {
+            if (m_openvrRadio.IsChecked == true)
+            {
                 runtimeName = "openvr_api.dll";
-            } else if (m_openxrRadio.IsChecked == true) {
+            }
+            else if (m_openxrRadio.IsChecked == true)
+            {
                 runtimeName = "openxr_loader.dll";
-            } else {
+            }
+            else
+            {
                 runtimeName = "openvr_api.dll";
             }
 
-            if (m_nullifyVRPluginsCheckbox.IsChecked == true) {
+            if (m_nullifyVRPluginsCheckbox.IsChecked == true)
+            {
                 IntPtr nullifierBase;
-                if (Injector.InjectDll(process.Id, "UEVRPluginNullifier.dll", out nullifierBase) && nullifierBase.ToInt64() > 0) {
-                    if (!Injector.CallFunctionNoArgs(process.Id, "UEVRPluginNullifier.dll", nullifierBase, "nullify", true)) {
+                if (Injector.InjectDll(process.Id, "UEVRPluginNullifier.dll", out nullifierBase) && nullifierBase.ToInt64() > 0)
+                {
+                    if (!Injector.CallFunctionNoArgs(process.Id, "UEVRPluginNullifier.dll", nullifierBase, "nullify", true))
+                    {
                         MessageBox.Show("Failed to nullify VR plugins.");
                     }
-                } else {
+                }
+                else
+                {
                     MessageBox.Show("Failed to inject plugin nullifier.");
                 }
             }
@@ -1086,6 +1064,41 @@ namespace UEVR {
             {
                 SwitchToThisWindow(process.MainWindowHandle, true);
             }
+        }
+
+        private bool TryGetProcess(out Process? p) {
+            
+            // Double check that the process we want to inject into exists
+            // this can happen if the user presses inject again while
+            // the previous combo entry is still selected but the old process
+            // has died.
+            p = null;
+
+            try {
+                var verifyProcess = Process.GetProcessById(m_lastSelectedProcessId);
+
+                if (verifyProcess == null || verifyProcess.HasExited || verifyProcess.ProcessName != m_lastSelectedProcessName) {
+                    
+                    var processes = Process.GetProcessesByName(m_lastSelectedProcessName);
+                    if (processes == null || processes.Length == 0 || !AnyInjectableProcesses(processes)) {
+                        return false;
+                    }
+
+                    foreach (var candidate in processes) {
+                        if (IsInjectableProcess(candidate)) {
+                            p = candidate;
+                            return true;
+                        }
+                    }
+                    return true;
+                }
+            }
+            catch (Exception ex) {
+                if (!skipAlertMessages) {
+                    MessageBox.Show(ex.Message);
+                }
+            }
+            return false;
         }
 
         private string GenerateProcessName(Process p) {
@@ -1230,6 +1243,62 @@ namespace UEVR {
             } finally {
                 m_processSemaphore.Release();
             }
+        }
+
+        private Process? WaitForProcess (string processName, int maxRetry = 1, int retryTimeInMiliseconds = 1000) {
+            for (int i = 0; i < maxRetry && !m_connected; i++) {
+                if (i > 0) {
+                    Thread.Sleep(retryTimeInMiliseconds);
+                }
+
+                foreach (var p in Process.GetProcesses()) {
+                    if (!IsInjectableProcess(p)) {
+                        continue;
+                    }
+                    if (processName == p.ProcessName) {
+                        return p;
+                    }
+                }
+            }
+            return null;
+        }
+
+        bool skipAlertMessages = false;
+
+        internal void AttachToProcess(AppArguments arguments) {
+            var executableDirectory = System.IO.Path.GetDirectoryName(arguments.Executable);
+
+            skipAlertMessages = true;
+
+            var processCandidate = WaitForProcess(arguments.ProcessName);
+            processCandidate?.CloseMainWindow();
+
+            Process p = new();
+            p.StartInfo.FileName = arguments.Executable;
+            p.StartInfo.Arguments = arguments.Arguments;
+            p.StartInfo.WorkingDirectory = arguments.WorkingDirectory ?? executableDirectory;
+            p.Start();
+
+            processCandidate = WaitForProcess(arguments.ProcessName, maxRetry: 10);
+            if (processCandidate != null) {
+                m_lastDefaultProcessListName = GenerateProcessName(processCandidate);
+            }
+
+            if (processCandidate != null) {
+                int max = 10;
+                for (int i = 0; i < max && !m_connected; i++) {
+                    processCandidate = WaitForProcess(arguments.ProcessName);
+                    if (processCandidate == null) {
+                        continue;
+                    }
+
+                    InitializeConfig(processCandidate.ProcessName);
+                    InjectProcess(processCandidate);
+
+                    Update_InjectorConnectionStatus();
+                }
+            }
+            skipAlertMessages = false;
         }
     }
 }

@@ -7,9 +7,10 @@ using System.Reflection;
 using Newtonsoft.Json;
 using System.IO;
 using System.Security.Cryptography;
+using UGMVR.UnrealVR;
 
 namespace UEVR {
-    public class ExecutableFilter {
+    public class ExecutableFilter : IExecutableFilter {
         private HashSet<string> m_invalidExecutables = new HashSet<string>();
 
         public ExecutableFilter() {

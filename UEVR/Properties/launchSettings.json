@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "UEVR": {
+      "commandName": "Project",
+      "commandLineArgs": "--runAndAttach=",
+      "hotReloadEnabled": true
+    }
+  }
+}
