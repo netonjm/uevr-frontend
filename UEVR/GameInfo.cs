@@ -33,6 +33,9 @@ namespace UEVR
 		[JsonPropertyName ("Engine")]
 		public string Engine { get; set; }
 
+		[JsonPropertyName ("EngineVersion")]
+		public string EngineVersion { get; set; }
+
 		[JsonIgnore]
 		public bool IsVR => false;
 

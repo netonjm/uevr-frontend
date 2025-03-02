@@ -21,6 +21,8 @@ using NexusMods.Paths;
 using System.Windows.Navigation;
 using System.Windows.Documents;
 using UGMVR.UnrealVR;
+using UGMVR;
+using System.Security.Cryptography;
 
 namespace UEVR
 {
@@ -44,12 +46,15 @@ namespace UEVR
 		internal static MainWindowSettings MainSettings = new MainWindowSettings();
 		
 		private UEVRGameRowView selectedItem;
-		private SurrealStreamerProcess surrealStreamerRunner = new SurrealStreamerProcess ();
+		private SurrealStreamerProcess surrealStreamerRunner = new();
 		private AccessibilitySurrealStreamingWindow surrealWindow;
-		
+		private ProcessManager processManager = new();
+
+
 		public ExtendedMainWindow ()
 		{
 			InitializeComponent ();
+
 			AppEnvironment.FinishedLoading += AppEnvironment_FinishedLoading;
 			UnrealPanel.OnMainInit();
 		}
@@ -62,6 +67,12 @@ namespace UEVR
 			RefreshGameList ();
 		}
 
+		enum RunningStates
+		{
+			Start,
+			Stop
+		}
+
 		private void MainWindow_Loaded (object sender, RoutedEventArgs e)
 		{
 			if (!WindowsIdentityHelper.IsAdministrator ()) {
@@ -72,12 +83,15 @@ namespace UEVR
 
 			UnrealPanel.OnMainLoaded();
 			
+			processManager.Finished += (s,e) => 
+			{
+				oLaunch.Content = RunningStates.Start.ToString(); 
+			};
+
 			//m_openvrRadio.IsChecked = m_mainWindowSettings.OpenVRRadio;
 			//m_openxrRadio.IsChecked = m_mainWindowSettings.OpenXRRadio;
 			
 			m_ignoreFutureVDWarnings = MainSettings.IgnoreFutureVDWarnings;
-
-			
 
 			m_updateTimer.Tick += (sender, e) => Dispatcher.Invoke (MainWindow_Update);
 			m_updateTimer.Start ();
@@ -88,7 +102,8 @@ namespace UEVR
 			var fileSystem = FileSystem.Shared;
 			var registry = WindowsRegistry.Shared;
 			//iterate between all the games
-			foreach (var game in AppEnvironment.Games) {
+			foreach (var game in AppEnvironment.Games) 
+			{
 				//if (!IsUnrealGameFolder(AppEnvironment.GetGameDirectoryPath(game.Wrapper))) 
 				//{
 				//    continue;
@@ -153,14 +168,9 @@ namespace UEVR
 			ProcessHelper.RestartAsAdmin(skipAlertMessages);
 		}
 		
-		internal void Hide_ConnectionOptions ()
+		internal void ShowConnectionOptions (bool value)
 		{
-			m_openGameDirectoryBtn.Visibility = Visibility.Collapsed;
-		}
-
-		internal void Show_ConnectionOptions ()
-		{
-			m_openGameDirectoryBtn.Visibility = Visibility.Visible;
+			m_openGameDirectoryBtn.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
 		}
 
 		private void TitleBar_MouseLeftButtonDown (object sender, MouseButtonEventArgs e)
@@ -228,11 +238,8 @@ namespace UEVR
 			}
 		}
 
-		private void MainWindow_Update ()
+		private void UpdateStreamingStatus()
 		{
-			// Actualizar todos los paneles
-			UnrealPanel.MainUpdate();
-
 			// Updater
 			var surrealStreamer = ProcessHelper.GetExecutableRunning("Surreal Streamer");
 			var m_virtualDesktopWarned = surrealStreamer != null;
@@ -259,7 +266,23 @@ namespace UEVR
 				Hyperlink steamVRLink = (Hyperlink)sv_openSteam.Inlines.FirstInline;
 				steamVRLink.Inlines.Clear ();
 				steamVRLink.Inlines.Add (m_steamVR ? "Stop Service" : "Start Service");
+		}
 
+
+		bool isStarting = false;
+
+		private void MainWindow_Update ()
+		{
+			// Actualizar todos los paneles
+			UnrealPanel.MainUpdate();
+
+			// Update Streaming Status
+			UpdateStreamingStatus ();
+
+			if (!isStarting)
+				processManager.CheckZombieProcessAndKill();
+
+			// Check Virtual Desktop
 			if (m_virtualDesktopChecked == false) {
 				m_virtualDesktopChecked = true;
 				Check_VirtualDesktop ();
@@ -337,17 +360,26 @@ namespace UEVR
 				selectedItem = null;
 			}
 
+			processManager.ProcessAction = UnrealPanel.GetProcessAction(selectedItem);
+
 			UnrealPanel.SelectionChanged(selectedItem);
+
 			RefreshGameData ();
 		}
 
 		private void RefreshGameData ()
 		{
+			// Visibility 
 			if (selectedItem != null) {
-				UnrealPanel.Visibility = selectedItem.Engine == "Unreal" ? Visibility.Visible : Visibility.Collapsed;
+				if (selectedItem.Engine == Engines.Unreal) {
+					UnrealPanel.Visibility  = Visibility.Visible;
+				} else {
+					UnrealPanel.Visibility = Visibility.Collapsed;
+				}
 			} else {
 				UnrealPanel.Visibility = Visibility.Collapsed;
 			}
+
 			oLaunch.IsEnabled = selectedItem != null && File.Exists (selectedItem.Executable);
 		}
 
@@ -363,62 +395,26 @@ namespace UEVR
 			RefreshGameList ();
 		}
 
+
 		private void oLaunch_Click (object sender, RoutedEventArgs e)
 		{
 			var selected = selectedItem;
 			if (selected == null)
 				return;
 
-			skipAlertMessages = true;
-
-			//var processCandidate = WaitForProcess(arguments.ProcessName);
-			//processCandidate?.CloseMainWindow();
-			ProcessHelper.ExecuteSelectedGame(selected.Executable, "");
-
-			//var processCandidate = WaitForProcess(arguments.ProcessName, maxRetry: 10);
-			//if (processCandidate != null)
-			//{
-			//    m_lastDefaultProcessListName = GenerateProcessName(processCandidate);
-			//}
-
-			//if (processCandidate != null)
-			//{
-			//    int max = 10;
-			//    for (int i = 0; i < max && !m_connected; i++)
-			//    {
-			//        processCandidate = WaitForProcess(arguments.ProcessName);
-			//        if (processCandidate == null)
-			//        {
-			//            continue;
-			//        }
-
-			//        InitializeConfig(processCandidate.ProcessName);
-			//        InjectProcess(processCandidate);
-
-			//        Update_InjectorConnectionStatus();
-			//    }
-			//}
-			skipAlertMessages = false;
-
-			//Button OpenPopupButton = (Button)sender;
-
-			//// Crear un nuevo Popup
-			//Popup popup = new Popup();
-
-			//// Crear contenido para el Popup (puede ser cualquier control)
-			//TextBlock popupContent = new TextBlock();
-			//popupContent.Text = "¡Hola, este es un Popup!";
-			//popupContent.Margin = new Thickness(10);
-
-			//// Establecer el contenido del Popup
-			//popup.Child = popupContent;
-
-			//// Establecer propiedades adicionales del Popup según sea necesario
-			//popup.PlacementTarget = sender as UIElement;
-			//popup.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
-			//popup.HorizontalOffset = OpenPopupButton.ActualWidth/2 - 70; // Centrar horizontalmente
-
-			//popup.IsOpen = true;
+			isStarting = true;
+			//skipAlertMessages = true;
+			if (processManager.IsRunning) {
+				processManager.KillCurrentProcess (true);
+				oLaunch.Content = RunningStates.Start.ToString ();
+			} else {
+				oLaunch.Content = RunningStates.Stop.ToString ();
+				processManager.KillCurrentProcess (false);
+				processManager.Start(selected.Executable);
+			}
+			isStarting = false;
+			
+			//skipAlertMessages = false;
 		}
 
 		private void ResultListView_SizeChanged (object sender, SizeChangedEventArgs e)

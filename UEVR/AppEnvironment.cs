@@ -62,13 +62,15 @@ namespace UEVR
 			steamSdkPlatform = new SteamSdkPlatform ();
 			steamSdkPlatform.ManifestAdded += OnManifestAdded;
 
+			
+
 			xboxSdkPlatform = new XboxSdkPlatform ();
 			xboxSdkPlatform.ManifestAdded += OnManifestAdded;
 
 			SdksEnvironments = [
 				//oculusSdkPlatform, 
-                //steamSdkPlatform,
-                xboxSdkPlatform
+                steamSdkPlatform,
+                //xboxSdkPlatform
                 ];
 
 			searchEngine = new SearchGameEngine ();
@@ -83,6 +85,8 @@ namespace UEVR
 			foreach (var sdk in SdksEnvironments) {
 				// initialize sdk
 				await sdk.InitializeAsync ();
+
+				//var gamess = await steamSdkPlatform.Api.GetSteamAppGameListAsync();
 
 				// sdk setup
 				await sdk.SetupAsync (CompatibilityManifest);
@@ -119,18 +123,23 @@ namespace UEVR
 
 				var directoryPath = platform.GetGameDirectoryPath(e);
 				var searchResult = await searchEngine.SearchAsync(directoryPath);
-				newGame.Engine = searchResult?.Engine;
 
-				if (newGame.Engine == "Unreal") {
-					try {
-						var executablePath = platform.GetGameExecutablePath(e);
-						var metadata = MetadataHelper.GetMetadataFromExecutableFilePath(executablePath);
-						foreach (var data in metadata) {
-							newGame.Properties.Add (data.Key, data.Value);
-						}
-					} catch (Exception ex) {
-						Console.WriteLine (ex.ToString ());
-					}
+				if (searchResult != null) {
+					newGame.Engine = searchResult.Engine;
+					newGame.EngineVersion = searchResult.Version;
+				}
+				
+				if (newGame.Engine == Engines.Unreal) {
+					//TODO: Enable this
+					//try {
+					//	var executablePath = platform.GetGameExecutablePath(e);
+					//	var metadata = MetadataHelper.GetMetadataFromExecutableFilePath(executablePath);
+					//	foreach (var data in metadata) {
+					//		newGame.Properties.Add (data.Key, data.Value);
+					//	}
+					//} catch (Exception ex) {
+					//	Console.WriteLine (ex.ToString ());
+					//}
 				}
 
 				OnPluginManifestAdded (newGame);
@@ -348,35 +357,33 @@ namespace UEVR
 
 		internal static BitmapImage? GetEngineImage (GameInfo model)
 		{
-			if (model.Platform == xboxSdkPlatform.Name) {
-
-				var imagePath = xboxSdkPlatform.GetGameLogoResourcePath(model.Wrapper);
-				return ImageSourceHelper.LoadBitmapImage(imagePath);
-
-			} else {
-
+			var platform = GetSdkPlatform(model.Wrapper);
+			if (platform != null) {
+				var imagePath = platform.GetGameLogoResourcePath(model.Wrapper);
+				if (File.Exists(imagePath))
+					return ImageSourceHelper.LoadBitmapImage(imagePath);
 			}
 
-			if (model.Engine == "Unity")
-				return new BitmapImage (
-new Uri ("pack://application:,,,/UEVR;component/Images/Unity.png"));
+//			if (model.Engine == "Unity")
+//				return new BitmapImage (
+//new Uri ("pack://application:,,,/UEVR;component/Images/Unity.png"));
 
 
-			if (model.Engine == "Unreal") {
-				if (compatibility.TryGetValue (model, out var com)) {
-					return new BitmapImage (
-new Uri ("pack://application:,,,/UEVR;component/Images/x"));
+//			if (model.Engine == "Unreal") {
+//				if (compatibility.TryGetValue (model, out var com)) {
+//					return new BitmapImage (
+//new Uri ("pack://application:,,,/UEVR;component/Images/x"));
 
-				} else {
-					return new BitmapImage (
-new Uri ("pack://application:,,,/UEVR;component/Images/Unreal.png"));
+//				} else {
+//					return new BitmapImage (
+//new Uri ("pack://application:,,,/UEVR;component/Images/Unreal.png"));
 
-				}
-			}
-
-			if (model.Engine == "REEngine")
-				return new BitmapImage (
- new Uri ("pack://application:,,,/UEVR;component/Images/REEngine.png"));
+//				}
+			//}
+	//	//
+	//		if (model.Engine == "REEngine")
+	//			return new BitmapImage (
+ //new Uri ("pack://application:,,,/UEVR;component/Images/REEngine.png"));
 
 			return null;
 		}

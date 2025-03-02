@@ -35,18 +35,18 @@
                 <materialDesign:PackIcon MouseDown="Documentation_Clicked" Kind="QuestionMark"
                         HorizontalAlignment="Right" VerticalAlignment="Center" Margin="7,0,0,0" DockPanel.Dock="Right"
                         Height="20" Width="20"></materialDesign:PackIcon>
-                <Image MouseDown="Discord_Clicked" ToolTip="Open Discord" Source="discord.png" Margin="7,0,0,0"
+                <Image MouseDown="Discord_Clicked" Visibility="Collapsed" ToolTip="Open Discord" Source="discord.png" Margin="7,0,0,0"
                         HorizontalAlignment="Right" Height="20" Width="20" DockPanel.Dock="Right" />
-                <Image MouseDown="Donate_Clicked" ToolTip="Donate Page" Source="donate.png" Margin="7,0,0,0"
+                <Image MouseDown="Donate_Clicked" Visibility="Collapsed" ToolTip="Donate Page" Source="donate.png" Margin="7,0,0,0"
                         HorizontalAlignment="Right" Height="20" Width="20" DockPanel.Dock="Right" />
                 <Image MouseDown="GitHub_Clicked" ToolTip="Open Github Page" Source="github.png" Margin="7,0,0,0"
                         HorizontalAlignment="Right" Height="20" Width="20" DockPanel.Dock="Right" />
                 <Image MouseDown="Image_MouseDown" ToolTip="Open Profile Mananger" Source="github.png" Margin="7,0,0,0"
                         HorizontalAlignment="Right" Height="20" Width="20" DockPanel.Dock="Right" />
-                <materialDesign:PackIcon MouseDown="ImportConfig_Clicked" ToolTip="Import Config" Kind="Import"
+                <materialDesign:PackIcon x:Name="BtnImportConfig" MouseDown="ImportConfig_Clicked" ToolTip="Import Config" Kind="Import"
                         Margin="7,0,0,0" HorizontalAlignment="Right" Height="30" Width="30" DockPanel.Dock="Right"
                         RenderTransformOrigin="0.5,0.5"></materialDesign:PackIcon>
-                <materialDesign:PackIcon MouseDown="ExportConfig_Clicked" ToolTip="Export Config" Kind="Export"
+                <materialDesign:PackIcon x:Name="BtnExportConfig" MouseDown="ExportConfig_Clicked" ToolTip="Export Config" Kind="Export"
                         DockPanel.Dock="Right" Margin="7,0,0,0" HorizontalAlignment="Right" Height="30" Width="30"
                         RenderTransformOrigin="0.5,0.5">
                     <materialDesign:PackIcon.RenderTransform>

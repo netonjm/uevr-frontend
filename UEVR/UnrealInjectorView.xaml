@@ -15,6 +15,12 @@
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,5,0,0">
                     <StackPanel Margin="10,0,0,0" Orientation="Horizontal" VerticalAlignment="Center">
                         <ToggleButton Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"
+                                x:Name="m_autoInject" Content="200" />
+                        <TextBlock Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"
+                                TextWrapping="Wrap" Text="Auto Inject" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Margin="10,0,0,0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <ToggleButton Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"
                                 x:Name="m_nullifyVRPluginsCheckbox" Content="200" />
                         <TextBlock Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"
                                 TextWrapping="Wrap" Text="Nullify VR Plugins" VerticalAlignment="Center" />
@@ -26,6 +32,20 @@
                                 TextWrapping="Wrap" Text="Focus game on injection" />
                     </StackPanel>
                 </StackPanel>
+                <StackPanel Margin="10,0,0,0" x:Name="m_injectAfterPanel" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"
+                            TextWrapping="Wrap" Text="Inject After " VerticalAlignment="Center" />
+                    <ComboBox x:Name="m_injectTime" DropDownOpened="ComboBox_DropDownOpened" VerticalAlignment="Top"
+                              Width="100">
+                        <ComboBoxItem Foreground="White" Content="5" />
+                        <ComboBoxItem Foreground="White" Content="10" IsSelected="True" />
+                        <ComboBoxItem Foreground="White" Content="30" />
+                        <ComboBoxItem Foreground="White" Content="60" />
+                    </ComboBox>
+                    <TextBlock Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"
+                            TextWrapping="Wrap" Text=" seconds." VerticalAlignment="Center" />
+                </StackPanel>
+               
                 <TextBlock x:Name="m_connectionStatus" Margin="0,7,0,5" TextWrapping="Wrap" Text="Unknown status"
                         Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}" />
             </StackPanel>

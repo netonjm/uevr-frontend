@@ -20,45 +20,12 @@ namespace UEVR
 
 		public void SetGame (GameInfo game)
 		{
-
-			//var executable = new Executable()
-			//         {
-			//             //Architecture = "x64",
-			//             OperatingSystem = "Windows",
-			//             //Path = "F:\\XboxGames\\Hi-Fi RUSH\\Content\\Hibiki\\Binaries\\WinGDK\\Hi-Fi-RUSH.exe",
-			//             Engine = new Engine()
-			//             {
-			//                 Brand = "Unreal",
-			//                 Version = new Version(4, 3, 21)
-			//             }
-			//         };
-
-			//         var gameManifest = new SteamGameManifest()
-			//         {
-			//             AppId = (int)steamGame.manifest.AppId,
-			//             Description = steamGame.Title,
-			//             Executable = executable
-			//         };
-
-			//       AppEnvironment.Games
-			//                     Name = steamGame.Title,
-			//                     ProviderId = "Steam",
-			//                     GameInfo = game,
-			//GameManifest = gameManifest,
-			//                     Id = Guid.NewGuid().ToString(),
-			//
-			//
-			//               ThumbnailUrl = GetImageIconFilePath(steamGame)
 			this.game = game;
 
-			this.Name = this.game.Title;
-
-
-			try {
-
+			try 
+			{
 				var platform = AppEnvironment.GetSdkPlatform(game.Wrapper);
 				this.Provider = platform.Name;
-				// this.Description = "This is a test";
 				// this.Engine = this.game.Executable.Engine.Brand;
 
 				this.Image = AppEnvironment.GetEngineImage (game); ;
@@ -67,11 +34,15 @@ namespace UEVR
 				Console.WriteLine ("");
 			}
 
+			IsLinked = true;
 
 			// this.Version = this.game.Executable.Engine.VersionString?.ToString() ?? string.Empty;
 			//this.Image = ImageHelper.GetImage(this.game.ThumbnailUrl ?? "C:\\Program Files (x86)\\Steam\\appcache\\librarycache\\80_library_hero_blur");
 		}
 
+		public bool IsLinked { get; set; }
+
+		//Lazy loading
 		string exec;
 		public string Executable
 		{
@@ -84,17 +55,20 @@ namespace UEVR
 					} catch (Exception ex) {
 						Console.WriteLine (ex.Message);
 					}
-
 				}
 				return exec;
 			}
 		}
 
-		public string Name { get; set; }
-		public string Description { get; set; }
-		public string Tooltip { get; set; }
-		public string Provider { get; set; }
+		public string Name => game.Title;
+		public string Description => game.DetailedDescription;
+		public string Tooltip => game.Title;
+			//               ThumbnailUrl = GetImageIconFilePath(steamGame)
+		public string Provider {get; private set; }
+
+		public string Developer => game.Developer;
 		public string Engine => game?.Engine ?? string.Empty;
+		public string EngineVersion => game?.EngineVersion ?? string.Empty;
 		public string Version { get; set; }
 		public ImageSource Image { get; set; }
 	}
