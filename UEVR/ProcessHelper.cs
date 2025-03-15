@@ -7,11 +7,109 @@ using System.Threading;
 using System.Windows;
 using UGMVR.UnrealVR;
 using System.ComponentModel;
+using System.Management;
+using GameFinder.Common;
+using UGMVR.Sdks.Steam;
 
 namespace UEVR
 {
 	static class ProcessHelper
 	{
+		
+    public  static Process GetProcessByPath(string executablePath)
+    {
+        return Process.GetProcesses()
+                      .FirstOrDefault(proc =>
+                      {
+                          try
+                          {
+                              return proc.MainModule?.FileName.Equals(executablePath, StringComparison.OrdinalIgnoreCase) == true;
+                          }
+                          catch
+                          {
+                              return false; // Algunos procesos pueden lanzar excepción por permisos
+                          }
+                      });
+    }
+
+		
+		public static Process GetCandidateProcess (string processName)
+		{
+			return Process.GetProcessesByName (processName).FirstOrDefault ();
+		}
+
+		public static async Task<bool> WaitForStabilityAsync (Process proc, int waitTimeMs)
+		{
+			int pid = proc.Id;
+			await Task.Delay (waitTimeMs); // Espera asíncrona
+
+			// Verificar si el proceso sigue en ejecución
+			return Process.GetProcesses ().Any (p => p.Id == pid);
+		}
+
+
+	public static async Task<Process> FindStableProcessAsync(string executablePath, int retries = 3)
+    {
+        string processName = Path.GetFileNameWithoutExtension(executablePath);
+        Console.WriteLine($"Buscando proceso con ruta '{executablePath}' o nombre '{processName}'...");
+
+        for (int attempt = 1; attempt <= retries; attempt++)
+        {
+            Process candidate = GetProcessByPath(executablePath) ?? GetCandidateProcess(processName);
+
+            if (candidate != null)
+            {
+                Console.WriteLine($"[{attempt}/{retries}] Proceso encontrado: {candidate.ProcessName} (PID: {candidate.Id})");
+
+                if (await WaitForStabilityAsync(candidate, 5000))
+                {
+                    Console.WriteLine($"Proceso estable. Retornando proceso con PID {candidate.Id}");
+                    return candidate; // Retorna el proceso estable
+                }
+                else
+                {
+                    Console.WriteLine($"El proceso se cerró. Intento {attempt} de {retries} fallido.");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"Intento {attempt} de {retries}: No se encontró un proceso con la ruta '{executablePath}' o nombre '{processName}'.");
+            }
+
+            if (attempt < retries)
+            {
+                await Task.Delay(1000); // Espera antes de reintentar
+            }
+        }
+
+        Console.WriteLine("No se encontró un proceso estable después de varios intentos.");
+        return null; // Retorna null si después de los intentos no encuentra un proceso estable
+    }
+
+		public static Task<Process> GetProcessCandidateAsync(this GameInfo game, int retries = 3)
+		{
+			var platform = AppEnvironment.GetSdkPlatform(game.Wrapper);
+			var expectedExecutable = platform.GetGameExecutablePath(game.Wrapper);
+				
+			return FindStableProcessAsync(expectedExecutable, retries);
+		}
+
+		 public static int ParentProcessId(this Process process)
+    {
+        try
+        {
+            using (var query = new ManagementObjectSearcher($"SELECT ParentProcessId FROM Win32_Process WHERE ProcessId = {process.Id}"))
+            {
+                var results = query.Get().Cast<ManagementObject>().FirstOrDefault();
+                return results != null ? Convert.ToInt32(results["ParentProcessId"]) : -1;
+            }
+        }
+        catch
+        {
+            return -1; // Error al obtener el proceso padre
+        }
+    }
+
 		public static string GenerateProcessName (Process p)
 		{
 			return p.ProcessName + " (pid: " + p.Id + ")" + " (" + p.MainWindowTitle + ")";

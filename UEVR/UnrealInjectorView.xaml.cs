@@ -20,45 +20,73 @@ namespace UEVR
 	public partial class UnrealInjectorView : UserControl
 	{
 		private ExecutableFilter m_executableFilter = new ExecutableFilter();
-		
-		private	CommandLineOptions commandLineParser;
+
+		private CommandLineOptions commandLineParser;
 		private string? m_commandLineAttachExe = null;
-		
+
 
 		public static bool IsUnrealRunning = false;
 
 		private IConfiguration? m_currentConfig = null;
 		private string? m_currentConfigPath = null;
 		private bool m_isFirstProcessFill = true;
-		
+
 		private string m_lastDisplayedWarningProcess = "";
 
-		private string excludedProcessesFile = "excluded.txt";
+
 		private string? m_lastDefaultProcessListName = null;
 		private string m_lastSelectedProcessName = new string("");
 		private int m_lastSelectedProcessId = 0;
 		private List<Process> m_processList = new List<Process>();
 
 		private SemaphoreSlim m_processSemaphore = new SemaphoreSlim(1, 1); // create a semaphore with initial count of 1 and max count of 1
-		//private ProcessMonitor processMonitor;
-		
+		private ProcessMonitor processMonitor;
+
 		private InjectorManager injectorManager = new InjectorManager();
 
 		private DateTime m_lastAutoInjectTime = DateTime.MinValue;
 		private DateTime lastInjectorStatusUpdate = DateTime.MinValue;
 		private DateTime lastFrontendSignal = DateTime.MinValue;
-		
+
 		private bool runExecutableOnStartup = false;
+
+		internal InjectDLLPostExecutionHandler currentExecutionHandler;
 
 		public UnrealInjectorView ()
 		{
 			InitializeComponent ();
+			currentExecutionHandler = new InjectDLLPostExecutionHandler(async p => {
+
+				if ((bool)m_autoInject.IsChecked) {
+					// Inject the DLL into the process
+					var g = await p.GetProcessCandidateAsync();
+					SelectProcess (g);
+					Update_InjectStatus ();
+					UpdateAutoRun(g);
+				} else {
+					Console.WriteLine ($"Auto inject disabled");
+
+				}
+				
+			});
+		}
+
+		int GetIndexByProcess(Process process)
+		{
+			int index = 0;
+			foreach (Process p in m_processList) {
+				if (p.Id == process.Id) {
+					return index;
+				}
+				index++;
+			}
+			return -1;
 		}
 
 		internal void OnMainInit ()
 		{
 			// Grab the command-line arguments
-			commandLineParser = new CommandLineOptions(Environment.GetCommandLineArgs());
+			commandLineParser = new CommandLineOptions (Environment.GetCommandLineArgs ());
 			runExecutableOnStartup = commandLineParser.RunOnStartup;
 			m_commandLineAttachExe = commandLineParser.ExecutablePath;
 
@@ -66,7 +94,7 @@ namespace UEVR
 			m_autoInject.Unchecked += (sender, e) => RefreshStates ();
 			RefreshStates ();
 		}
-		
+
 		private async void FillProcessList ()
 		{
 			// Allow the previous running FillProcessList task to finish first
@@ -86,7 +114,7 @@ namespace UEVR
 
 					// loop through the list of processes
 					foreach (Process process in processList) {
-						if (!UEVRHelper.IsInjectableProcess (process, excludedProcessesFile, m_executableFilter)) {
+						if (!UEVRHelper.IsInjectableProcess (process, m_executableFilter)) {
 							continue;
 						}
 
@@ -106,42 +134,42 @@ namespace UEVR
 			}
 		}
 
-  //      internal async Task AttachToProcessAsync() 
+		//      internal async Task AttachToProcessAsync() 
 		//{
-  //          ExtendedMainWindow.skipAlertMessages = true;
+		//          ExtendedMainWindow.skipAlertMessages = true;
 		//	string processName = Path.GetFileNameWithoutExtension(commandLineParser.ExecutablePath);
-       
-  //          var processCandidate = ProcessHelper.WaitForProcess(commandLineParser.ExecutablePath, commandLineParser.Arguments);
-			
+
+		//          var processCandidate = ProcessHelper.WaitForProcess(commandLineParser.ExecutablePath, commandLineParser.Arguments);
+
 		//	var timeToWait = 15000;
 		//	await ProcessHelper.WaitForProcessToStartAsync(processName, timeToWait);
 		//	InitializeConfig(processCandidate.ProcessName);
 		//	InjectProcess (processCandidate);
-  //          Update_InjectorConnectionStatus();
+		//          Update_InjectorConnectionStatus();
 
-  //          ExtendedMainWindow.skipAlertMessages = false;
-  //      }
+		//          ExtendedMainWindow.skipAlertMessages = false;
+		//      }
 
-		private void RefreshStates()
+		private void RefreshStates ()
 		{
 			// autoinject checkbox
 			if ((bool)m_autoInject.IsChecked) {
 				m_injectAfterPanel.Visibility = Visibility.Visible;
 				m_processListBox.Visibility = m_injectButton.Visibility = Visibility.Collapsed;
-				
+
 			} else {
 				m_injectAfterPanel.Visibility = Visibility.Collapsed;
 				m_processListBox.Visibility = m_injectButton.Visibility = Visibility.Visible;
 			}
 		}
 
-		public void MainUpdate()
+		public void MainUpdate ()
 		{
-			Update_InjectorConnectionStatus();
+			Update_InjectorConnectionStatus ();
 			Update_InjectStatus ();
 		}
-		
-		public void ImportConfig()
+
+		public void ImportConfig ()
 		{
 			var importPath = GameConfig.BrowseForImport(AppSettings.GetGlobalDirPath());
 
@@ -197,7 +225,7 @@ namespace UEVR
 			}
 		}
 
-		public void ExportConfig()
+		public void ExportConfig ()
 		{
 			if (!m_connected) {
 				MessageBox.Show ("Inject into a game first!");
@@ -274,7 +302,7 @@ namespace UEVR
 			if (m_connected) {
 				var pid = m_lastSharedData?.pid;
 				if (pid != null) {
-					ProcessManager.Kill((int)pid);
+					ProcessManager.Kill ((int)pid);
 				}
 				return true;
 			}
@@ -308,7 +336,7 @@ namespace UEVR
 			if (process == null) {
 				throw new Exception ("Process is null");
 			}
-			injectorManager.Inject(process);
+			injectorManager.Inject (process);
 		}
 
 		private void RefreshProcessComboBox ()
@@ -327,19 +355,24 @@ namespace UEVR
 				}
 			}
 		}
-		
-		private void Update_InjectStatus ()
-		{
-			if (m_connected) {
-				m_injectButton.Content = "Terminate Connected Process";
-				return;
-			}
 
+
+		enum AppRunState
+		{
+			Default,
+			CommandLine,
+			AutoRun,
+		}
+
+		AppRunState appRunState = AppRunState.Default;
+
+
+		private void UpdateDefault()
+		{
 			DateTime now = DateTime.Now;
 			TimeSpan oneSecond = TimeSpan.FromSeconds(1);
-
-			if (m_commandLineAttachExe == null) {
-				if (m_lastSelectedProcessId == 0) {
+			
+			if (m_lastSelectedProcessId == 0) {
 					m_injectButton.Content = "Inject";
 					return;
 				}
@@ -350,7 +383,7 @@ namespace UEVR
 					if (verifyProcess == null || verifyProcess.HasExited || verifyProcess.ProcessName != m_lastSelectedProcessName) {
 						var processes = Process.GetProcessesByName(m_lastSelectedProcessName);
 
-						if (processes == null || processes.Length == 0 || !UEVRHelper.AnyInjectableProcesses (processes, excludedProcessesFile, m_executableFilter)) {
+						if (processes == null || processes.Length == 0 || !UEVRHelper.AnyInjectableProcesses (processes, m_executableFilter)) {
 							m_injectButton.Content = "Waiting for Process";
 							return;
 						}
@@ -360,15 +393,23 @@ namespace UEVR
 				} catch (ArgumentException) {
 					var processes = Process.GetProcessesByName(m_lastSelectedProcessName);
 
-					if (processes == null || processes.Length == 0 || !UEVRHelper.AnyInjectableProcesses (processes, excludedProcessesFile, m_executableFilter)) {
+					if (processes == null || processes.Length == 0 || !UEVRHelper.AnyInjectableProcesses (processes, m_executableFilter)) {
 						m_injectButton.Content = "Waiting for Process";
 						return;
 					}
 
 					m_injectButton.Content = "Inject";
 				}
-			} else {
-				m_injectButton.Content = "Waiting for " + m_commandLineAttachExe.ToLower () + "...";
+
+			
+		}
+
+		private void UpdateCommandLine()
+		{
+			
+			DateTime now = DateTime.Now;
+			TimeSpan oneSecond = TimeSpan.FromSeconds(1);
+		m_injectButton.Content = "Waiting for " + m_commandLineAttachExe.ToLower () + "...";
 
 				var processes = Process.GetProcessesByName(m_commandLineAttachExe.ToLower().Replace(".exe", ""));
 
@@ -379,7 +420,7 @@ namespace UEVR
 				Process? process = null;
 
 				foreach (Process p in processes) {
-					if (UEVRHelper.IsInjectableProcess (p, excludedProcessesFile, m_executableFilter)) {
+					if (UEVRHelper.IsInjectableProcess (p, m_executableFilter)) {
 						m_lastSelectedProcessId = p.Id;
 						m_lastSelectedProcessName = p.ProcessName;
 						process = p;
@@ -391,17 +432,67 @@ namespace UEVR
 				}
 
 				if (now - m_lastAutoInjectTime > oneSecond) {
-					if (injectorManager.Inject(process)) {
+					if (injectorManager.Inject (process)) {
 						InitializeConfig (process.ProcessName);
 					}
 
 					m_lastAutoInjectTime = now;
 					m_commandLineAttachExe = null; // no need anymore.
 					FillProcessList ();
+					appRunState = AppRunState.Default;
 				}
-			}
+				
 		}
 
+		private void Update_InjectStatus ()
+		{
+			if (m_connected) {
+				m_injectButton.Content = "Terminate Connected Process";
+				return;
+			}
+
+			switch (appRunState) {
+			
+				case AppRunState.CommandLine:
+				UpdateCommandLine();
+					break;
+				case AppRunState.AutoRun:
+					//UpdateAutoRun();
+					break;
+				default:
+					UpdateDefault ();
+					break;
+			}
+
+		}
+
+		private void UpdateAutoRun (Process p)
+		{
+			DateTime now = DateTime.Now;
+			TimeSpan oneSecond = TimeSpan.FromSeconds(1);
+			m_injectButton.Content = "Waiting for " + p.ProcessName.ToLower () + "...";
+
+			Process process = null;
+			if (UEVRHelper.IsInjectableProcess (p, m_executableFilter)) {
+					m_lastSelectedProcessId = p.Id;
+					m_lastSelectedProcessName = p.ProcessName;
+					process = p;
+				}
+
+			if (process == null) {
+				return;
+			}
+
+			if (now - m_lastAutoInjectTime > oneSecond) {
+				if (injectorManager.Inject (process)) {
+					InitializeConfig (process.ProcessName);
+				}
+
+				m_lastAutoInjectTime = now;
+				m_commandLineAttachExe = null; // no need anymore.
+				FillProcessList ();
+			}
+		}
 		private void RefreshCurrentConfig ()
 		{
 			if (m_currentConfig == null || m_currentConfigPath == null) {
@@ -410,7 +501,7 @@ namespace UEVR
 
 			InitializeConfig_FromPath (m_currentConfigPath);
 		}
-		
+
 		private void InitializeConfig (string gameName)
 		{
 			var configDir =AppEnvironment.GetGlobalGameDir(gameName);
@@ -418,13 +509,13 @@ namespace UEVR
 
 			InitializeConfig_FromPath (configPath);
 		}
-		
+
 		private string[] m_discouragedPlugins = {
 			"OpenVR",
 			"OpenXR",
 			"Oculus"
 		};
-		
+
 		private string IniToString (IConfiguration config)
 		{
 			string result = "";
@@ -498,17 +589,10 @@ namespace UEVR
 			return null;
 		}
 
-		private void ComboBox_SelectionChanged (object sender, SelectionChangedEventArgs e)
+		void SelectProcess(Process p)
 		{
-			//ComboBoxItem comboBoxItem = ((sender as ComboBox).SelectedItem as ComboBoxItem);
-
 			try {
-				var box = (sender as ComboBox);
-				if (box == null || box.SelectedIndex < 0 || box.SelectedIndex > m_processList.Count) {
-					return;
-				}
 
-				var p = m_processList[box.SelectedIndex];
 				if (p == null || p.HasExited) {
 					return;
 				}
@@ -561,7 +645,19 @@ namespace UEVR
 				Console.WriteLine ($"Exception caught: {ex}");
 			}
 		}
-		
+
+		private void ComboBox_SelectionChanged (object sender, SelectionChangedEventArgs e)
+		{
+			//ComboBoxItem comboBoxItem = ((sender as ComboBox).SelectedItem as ComboBoxItem);
+			var box = (sender as ComboBox);
+			if (box == null || box.SelectedIndex < 0 || box.SelectedIndex > m_processList.Count) {
+				return;
+			}
+
+			var p = m_processList[box.SelectedIndex];
+			SelectProcess(p);
+		}
+
 		public bool TryGetNewProcess (out Process? process)
 		{
 			process = null;
@@ -576,13 +672,13 @@ namespace UEVR
 				if (verifyProcess == null || verifyProcess.HasExited || verifyProcess.ProcessName != m_lastSelectedProcessName) {
 
 					var processes = Process.GetProcessesByName(m_lastSelectedProcessName);
-					if (processes == null || processes.Length == 0 || 
-						!UEVRHelper.AnyInjectableProcesses (processes, excludedProcessesFile, m_executableFilter)) {
+					if (processes == null || processes.Length == 0 ||
+						!UEVRHelper.AnyInjectableProcesses (processes, m_executableFilter)) {
 						return false;
 					}
 
 					foreach (var candidate in processes) {
-						if (UEVRHelper.IsInjectableProcess (candidate, excludedProcessesFile, m_executableFilter)) {
+						if (UEVRHelper.IsInjectableProcess (candidate, m_executableFilter)) {
 							process = candidate;
 							return true;
 						}
@@ -607,7 +703,7 @@ namespace UEVR
 
 			m_isFirstProcessFill = false;
 		}
-		
+
 		private void TextChanged_Value (object sender, RoutedEventArgs e)
 		{
 			try {
@@ -692,21 +788,36 @@ namespace UEVR
 			}
 		}
 
-		bool IsUnrealGame(UEVRGameRowView? selectedItem)
-		{
-			if (selectedItem == null) {
-				return false;
-			}
-			return selectedItem.Engine == Engines.Unreal;
-		}
-
 		internal void SelectionChanged (UEVRGameRowView? selectedItem)
 		{
 			// refresh
-			if (IsUnrealGame(selectedItem)) {
-				RefreshStates();
-			} 
+			if (selectedItem != null && selectedItem.IsUnrealGame) {
+				var game = selectedItem.game.Wrapper;
+				var engine = AppEnvironment.GetSdkPlatform(game);
+				var compatibility = engine.GetCompatibilityGame(game);
+				if (compatibility != null) {
+					m_GameCompatibiltySection.Visibility = Visibility.Visible;
+					m_CompatibilityGameView.Text = compatibility.GameView;
+					m_Compatibility1st.IsChecked = compatibility.View1st;
+					m_Compatibility3rd.IsChecked = compatibility.View3rd;
+					m_Compatibility6Dof.IsChecked = !string.IsNullOrEmpty (compatibility.num6DOFmotioncontrolsUObjectHook);
+					m_Compatibility3Dof.IsChecked = compatibility.num3DOFmotioncontrols;
+					m_CompatibilityPlayability.Text = compatibility.Playability.ToString ();
+					m_CompatibilityRenderingMethod.Text = compatibility.RenderingMethod.ToString ();
+					m_CompatibilityUeMajor.Text = compatibility.UEmajor;
+					m_CompatibilityUeMajor.Visibility = string.IsNullOrEmpty (compatibility.UEmajor) ? Visibility.Collapsed : Visibility.Visible;
+					m_CompatibilityUeVersion.Text = compatibility.UEversion;
+					m_CompatibilityUeVersion.Visibility = string.IsNullOrEmpty (compatibility.UEversion) ? Visibility.Collapsed : Visibility.Visible;
+				} else {
+					m_GameCompatibiltySection.Visibility = Visibility.Collapsed;
+				}
+
+				RefreshStates ();
+			} else {
+				m_GameCompatibiltySection.Visibility = Visibility.Collapsed;
+			}
 		}
+
 
 		internal void OnMainLoaded ()
 		{
@@ -730,7 +841,7 @@ namespace UEVR
 
 			DirectoryHelper.NavigateToDirectory (directory);
 		}
-		
+
 		private void InitializeConfig_FromPath (string configPath)
 		{
 			var builder = new ConfigurationBuilder().AddIniFile(configPath, optional: true, reloadOnChange: false);
@@ -811,15 +922,47 @@ namespace UEVR
 
 		internal void OnSizeChanged (Window w, SizeChangedEventArgs e)
 		{
-			ContentScrollView.MaxHeight = Math.Max (w.ActualHeight - 100, 100);
+			ContentScrollView.MaxHeight = 10000;
+			//ContentScrollView.MaxHeight = Math.Max (w.ActualHeight, 100);
 		}
 
-		internal ProcessAction? GetProcessAction (UEVRGameRowView? selectedItem)
+		
+		internal ProcessPostExecutionHandler? GetPostExecutionHandler (UEVRGameRowView? selectedItem)
 		{
 			if (selectedItem != null && selectedItem.Engine == Engines.Unreal) {
-				
+				return currentExecutionHandler;
 			}
 			return null;
 		}
+
+		internal void Clean ()
+		{
+
+		}
+
+
+		// Implementación de una acción: Inyectar una DLL
+		public class InjectDLLPostExecutionHandler : ProcessPostExecutionHandler
+		{
+			public  int DelayMs { get; } = 5000;  // Sobrescribir: Espera antes de inyectar (5s)
+			public int MaxRetries { get; } = 3;  // Máximo 3 intentos
+			public int RetryDelayMs { get; } = 2000; // 2 segundos entre intentos
+
+			public string DDLPath { get; set; }
+			Action<GameInfo> InjectionHandler;
+
+			public InjectDLLPostExecutionHandler (Action<GameInfo> view)
+			{
+				InjectionHandler = view;
+			}
+
+
+			public override Task<bool> ExecuteAsync (GameInfo process)
+			{
+				InjectionHandler.Invoke (process);
+				return Task.FromResult(true);
+			}
+		}
+
 	}
 }

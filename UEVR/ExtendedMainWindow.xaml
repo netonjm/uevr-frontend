@@ -71,9 +71,18 @@
             </Grid.ColumnDefinitions>
             <GroupBox Grid.Column="0" Header="Game List">
                 <StackPanel Orientation="Vertical">
-                    <TextBox x:Name="SearchField"
-                            Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"
-                            TextChanged="TextBox_TextChanged" />
+                    <Grid Width="Auto" Height="Auto">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="70" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" x:Name="SearchField" 
+                                Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"
+                                TextChanged="TextBox_TextChanged" />
+                        <CheckBox Grid.Column="1"  Content="UEvR" x:Name="m_UEvRFilter" Foreground="White"
+                                VerticalAlignment="Center" />
+                    </Grid>
+                  
                     <ScrollViewer x:Name="GameListScrollView" VerticalScrollBarVisibility="Visible">
                         <ListView ScrollViewer.CanContentScroll="True" HorizontalAlignment="Stretch"
                                 x:Name="ResultListView" SelectionChanged="ResultListView_SelectionChanged"
@@ -98,10 +107,21 @@
                                 </DataTemplate>
                                 <DataTemplate x:Key="ColoredUevrTemplate">
                                     <Grid VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
+                                        <Grid.Style>
+                                            <Style TargetType="Grid">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsUnrealGame}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Grid.Style>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
+                                        
                                         <!-- Primera columna: Bordes redondeados a la izquierda -->
                                         <Grid Grid.Column="0">
                                             <Border Background="#442c31" HorizontalAlignment="Stretch" CornerRadius="10,0,0,10" Width="50" Height="20" />
@@ -112,7 +132,7 @@
                                         <!-- Segunda columna: Bordes redondeados a la derecha -->
                                         <Grid Grid.Column="1">
                                             <Border Background="#151618" HorizontalAlignment="Stretch" CornerRadius="0,10,10,0" Width="50" Height="20" />
-                                            <TextBlock Text="5.3.2" Foreground="#c7c8c9" FontSize="9"
+                                            <TextBlock Text="{Binding EngineVersion}"  Foreground="#c7c8c9" FontSize="9"
                                                     FontWeight="Bold" HorizontalAlignment="Center"
                                                     VerticalAlignment="Center" />
                                         </Grid>
@@ -120,25 +140,42 @@
                                 </DataTemplate>
                             </ListView.Resources>
                             <ListView.ItemContainerStyle>
+                                
                                 <Style TargetType="ListViewItem">
+                                    <EventSetter Event="ContextMenuOpening" Handler="OnListViewItem_ContextMenuOpening" />
+                                    <Setter Property="ContextMenu">
+                                        <Setter.Value>
+                                            <ContextMenu>
+                                                <MenuItem x:Name="MenuOpenDirectory"
+                                                       
+                                                        Header="Open Directory" />
+                                                <MenuItem x:Name="MenuShorcut" Header="Add Shorcut to Steam" />
+                                                <Separator />
+                                                <MenuItem x:Name="MenuLaunch" Header="Launch" />
+                                            </ContextMenu>
+                                        </Setter.Value>
+                                    </Setter>
+                                   
                                     <EventSetter Event="PreviewMouseLeftButtonDown"
                                             Handler="ListViewItem_PreviewMouseLeftButtonDown" />
                                     <Style.Triggers>
                                         <!-- Color de la fila seleccionada -->
                                         <Trigger Property="IsSelected" Value="True">
-                                            <Setter Property="Background" Value="#5C0773" />
-                                            <!-- Cambia este color -->
-                                            <Setter Property="Foreground" Value="White" />
+                                            <Setter Property="Background" Value="#3E3E3E" />
+                                          
                                         </Trigger>
                                         <!-- Color cuando el mouse está sobre la fila -->
                                         <Trigger Property="IsMouseOver" Value="True">
                                             <Setter Property="Background" Value="#2E2E2E" />
-                                            <!-- Color gris oscuro -->
-                                            <Setter Property="Foreground" Value="White" />
+                                          
                                         </Trigger>
                                     </Style.Triggers>
+                                    
                                 </Style>
                             </ListView.ItemContainerStyle>
+                            <!-- Estilo para los ítems del ListView con el menú contextual -->
+                           
+                            
                             <ListView.View>
                                 <GridView ColumnHeaderContainerStyle="{StaticResource GridViewHeaderStyle}">
                                     <GridViewColumn Width="80" CellTemplate="{StaticResource KeyTemplate}" />

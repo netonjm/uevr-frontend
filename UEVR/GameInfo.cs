@@ -1,10 +1,11 @@
 ﻿using System.Collections.Generic;
 using UGMVR.Sdks;
 using System.Text.Json.Serialization;
+using UGMVR;
 
 namespace UEVR
 {
-	class GameInfo
+	public class GameInfo
 	{
 		[JsonIgnore]
 		public IGameManifestWrapper Wrapper { get; set; }
@@ -36,8 +37,11 @@ namespace UEVR
 		[JsonPropertyName ("EngineVersion")]
 		public string EngineVersion { get; set; }
 
+		[JsonPropertyName ("IsVR")]
+		public bool IsVR { get; set; }
+		
 		[JsonIgnore]
-		public bool IsVR => false;
+		public bool IsUnrealGame => Engine == Engines.Unreal;
 
 		[JsonPropertyName ("Properties")]
 		public Dictionary<string, string> Properties { get; set; } = [];

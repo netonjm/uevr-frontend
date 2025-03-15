@@ -1,23 +1,24 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Controls.Primitives;
+using GameFinder.Common;
+using GameFinder.StoreHandlers.Steam.Models.ValueTypes;
 using NLog.Targets;
+using UGMVR.Sdks.Steam;
 
 namespace UEVR
 {
 	// Clase abstracta para definir acciones sobre un proceso
-	public abstract class ProcessAction
+	public abstract class ProcessPostExecutionHandler
 	{
-		public virtual int DelayMs { get; } = 3000;  // Tiempo antes de ejecutar la acción (por defecto 3s)
-		public virtual int MaxRetries { get; } = 3;  // Número máximo de intentos (por defecto 3)
-		public virtual int RetryDelayMs { get; } = 2000; // Espera entre intentos (por defecto 2s)
-
-		public abstract bool Execute (Process process);
+		public abstract Task<bool> ExecuteAsync (GameInfo process);
 	}
 
 	// Clase que maneja la ejecución de un proceso y ejecuta la acción correspondiente
@@ -27,26 +28,34 @@ namespace UEVR
 		public event EventHandler Finished;
 		private  string _exePath;
 		private  string _processName;
-		public ProcessAction? ProcessAction { get; set; }
+		public ProcessPostExecutionHandler? PostExecutionHandler { get; set; }
 
 		Process currentProcess;
 
 		public static bool Kill (Process target)
 		{
-			try {
-				if (target == null || target.HasExited) {
-					return true;
-				}
-				target.WaitForInputIdle (100);
+			if (target == null)
+				return true;
 
+			//if (target == null || target.HasExited) {
+			//	return true;
+			//}
+
+			try {
+
+				var processName = target.ProcessName;
 				SharedMemory.SendCommand (SharedMemory.Command.Quit);
+
+
+				//target = Process.GetProcessesByName (processName).FirstOrDefault();
+				target.Kill (true);
+
+				
+				target.WaitForInputIdle (100);
 
 				if (target.WaitForExit (2000)) {
 					return true;
 				}
-
-				target.Kill ();
-
 			} catch (Exception) {
 				return false;
 			}
@@ -59,44 +68,116 @@ namespace UEVR
 			return Kill (target);
 		}
 
-		public void Start (string exePath)
+		/// <summary>
+		/// Obtiene un proceso candidato para la inyección dentro de los procesos hijos del ejecutable original.
+		/// </summary>
+		private async Task<Process> ObtenerProcesoCandidato (int parentPid)
 		{
-			_exePath = exePath;
-			_processName = System.IO.Path.GetFileNameWithoutExtension (exePath); // Obtener solo el nombre del proceso
+			for (int i = 0; i < 5; i++) {
+				var childProcesses = Process.GetProcesses()
+				.Where(p => ObtenerProcesoPadre(p.Id) == parentPid)
+				.ToList();
 
-			currentProcess = GetExistingProcess ();
-			if (currentProcess != null && currentProcess.HasExited) {
-				//kill
-				KillCurrentProcess();
-				currentProcess = null;
+				if (childProcesses.Any ()) {
+					// Seleccionar un proceso candidato (puede ajustarse según necesidad)
+					return childProcesses.FirstOrDefault ();
+				}
+
+				//await Task.Delay (1000); // Esperar antes de volver a comprobar
+			}
+			return null;
+		}
+
+		/// <summary>
+		/// Obtiene el PID del proceso padre de un proceso dado.
+		/// </summary>
+		private int ObtenerProcesoPadre (int pid)
+		{
+			try {
+				using (var process = Process.GetProcessById (pid)) {
+					return process.ParentProcessId ();
+				}
+			} catch {
+				return -1; // Si no se puede obtener, asumimos que es un proceso huérfano
+			}
+		}
+
+		private async Task StartedAsync ()
+		{
+			// wait some time to get the child process
+			//await Task.Delay (5000);
+
+			//// si existe un proceso candidato, lo seleccionamos
+			//var candidate = await ObtenerProcesoCandidato(currentProcess.Id);
+			//if (candidate != null) {
+			//	currentProcess = candidate;
+			//}
+
+			
+			// comprobamos el proceso que está enfocadd si no es el mismo que se espera
+			// es el proceso enfocado?
+
+
+			//currentProcess.Exited -= CurrentProcess_Exited;
+			//currentProcess.Exited += CurrentProcess_Exited;
+
+			PostExecutionHandler?.ExecuteAsync(currentGame);
+		}
+
+		GameInfo currentGame;
+
+		public async Task StopAsync()
+		{
+			if (currentProcess != null && !currentProcess.HasExited) {
+				currentProcess.Kill(true);
 			}
 
-			if (currentProcess == null) {
-				currentProcess = StartNewProcess ();
+			if (currentGame != null) 
+			{
+				currentProcess = await currentGame.GetProcessCandidateAsync ();
+				currentProcess?.Kill(true);
+				currentGame = null;
 			}
+			currentProcess = null;
+		}
 
-			if (currentProcess == null) {
-				Console.WriteLine ("No se pudo iniciar ni obtener el proceso.");
-				return;
+		public async Task StartAsync(GameInfo game)
+		{	
+			currentGame = game;
+
+			var platform = AppEnvironment.GetSdkPlatform(game.Wrapper);
+
+			if (platform.Name == SteamSdk.SdkIdentifier) {
+				Process.Start (new ProcessStartInfo ($"steam://run/{game.AppId}") { UseShellExecute = true });
+				currentProcess = await game.GetProcessCandidateAsync();
+			} else {
+				var executablePath = platform.GetGameExecutablePath(game.Wrapper);
+				Console.WriteLine ($"Buscando el proceso '{executablePath}'...");
+
+				_exePath = executablePath;
+				_processName = System.IO.Path.GetFileNameWithoutExtension (executablePath); // Obtener solo el nombre del proceso
+
+				currentProcess = GetExistingProcess ();
+
+				if (currentProcess != null && !currentProcess.HasExited) {
+					//kill
+					KillCurrentProcess ();
+					currentProcess = null;
+				}
+
+				if (currentProcess == null) {
+					ProcessStartInfo startInfo = new ProcessStartInfo
+					{
+						FileName = executablePath,
+						Arguments = null,
+						UseShellExecute = true, // Necesario para ejecutables con GUI
+						CreateNoWindow = false
+					};
+					currentProcess = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
+					currentProcess.Start ();
+				}
 			}
-
-			currentProcess.Exited -= CurrentProcess_Exited;
-			currentProcess.Exited += CurrentProcess_Exited;
-
-			Console.WriteLine ($"Proceso en ejecución: {currentProcess.ProcessName} (PID: {currentProcess.Id})");
-
-			// Si no hay acción, simplemente ejecutar el proceso sin hacer nada más
-			if (ProcessAction == null) {
-				Console.WriteLine ("No se ha definido ninguna acción. El proceso continuará ejecutándose normalmente.");
-				//process.WaitForExit();
-				return;
-			}
-
-			// Ejecutar la acción después del delay configurado en la acción
-			Task.Run (async () => {
-				await Task.Delay (ProcessAction.DelayMs);
-				ExecuteWithRetries (currentProcess);
-			});
+			await StartedAsync ();
 		}
 
 		private void CurrentProcess_Exited (object? sender, EventArgs e)
@@ -134,28 +215,7 @@ namespace UEVR
 			return null;
 		}
 
-		private void ExecuteWithRetries (Process process)
-		{
-			int attempt = 0;
-			while (attempt < ProcessAction!.MaxRetries) {
-				attempt++;
-				Console.WriteLine ($"Intento {attempt}/{ProcessAction.MaxRetries} de ejecutar la acción...");
-
-				if (ProcessAction.Execute (process)) {
-					Console.WriteLine ("Acción ejecutada exitosamente.");
-					return;
-				}
-
-				if (attempt < ProcessAction.MaxRetries) {
-					Console.WriteLine ($"Fallo en la ejecución. Reintentando en {ProcessAction.RetryDelayMs}ms...");
-					Thread.Sleep (ProcessAction.RetryDelayMs);
-				} else {
-					Console.WriteLine ("Se agotaron los intentos. La acción no pudo completarse.");
-				}
-			}
-		}
-
-		bool skipFireEvent = false; 
+		bool skipFireEvent = false;
 		public void KillCurrentProcess (bool fireEvent = true)
 		{
 			skipFireEvent = true;
@@ -167,62 +227,6 @@ namespace UEVR
 		{
 			if (currentProcess != null && currentProcess.HasExited) {
 				KillCurrentProcess ();
-			}
-		}
-	}
-
-	// Implementación de una acción: Inyectar una DLL
-	public class InjectDLLAction : ProcessAction
-	{
-		public override int DelayMs { get; } = 5000;  // Sobrescribir: Espera antes de inyectar (5s)
-		public override int MaxRetries { get; } = 3;  // Máximo 3 intentos
-		public override int RetryDelayMs { get; } = 2000; // 2 segundos entre intentos
-		private readonly string _dllPath;
-
-		public InjectDLLAction (string dllPath)
-		{
-			_dllPath = dllPath;
-		}
-
-		public override bool Execute (Process process)
-		{
-			Console.WriteLine ($"[InjectDLL] Intentando inyectar {_dllPath} en {process.ProcessName} (PID: {process.Id})...");
-
-			// Simular fallo aleatorio en la inyección
-			if (new Random ().Next (0, 2) == 0) {
-				Console.WriteLine ("[InjectDLL] Inyección fallida.");
-				return false;
-			}
-
-			Console.WriteLine ("[InjectDLL] Inyección exitosa.");
-			return true;
-		}
-	}
-
-	// Implementación de otra acción: Lanzar otro proceso
-	public class LaunchProcessAction : ProcessAction
-	{
-		public override int DelayMs { get; } = 3000;  // Sobrescribir: Espera 3 segundos antes de ejecutar
-		public override int MaxRetries { get; } = 5;  // Máximo 5 intentos
-		public override int RetryDelayMs { get; } = 1000; // 1 segundo entre intentos
-		private readonly string _newProcessPath;
-
-		public LaunchProcessAction (string newProcessPath)
-		{
-			_newProcessPath = newProcessPath;
-		}
-
-		public override bool Execute (Process process)
-		{
-			Console.WriteLine ($"[LaunchProcess] Intentando lanzar {_newProcessPath}...");
-
-			try {
-				Process.Start (_newProcessPath);
-				Console.WriteLine ("[LaunchProcess] Proceso lanzado exitosamente.");
-				return true;
-			} catch (Exception ex) {
-				Console.WriteLine ($"[LaunchProcess] Error al lanzar proceso: {ex.Message}");
-				return false;
 			}
 		}
 	}

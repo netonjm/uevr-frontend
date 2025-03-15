@@ -68,9 +68,9 @@ namespace UEVR
 			xboxSdkPlatform.ManifestAdded += OnManifestAdded;
 
 			SdksEnvironments = [
-				//oculusSdkPlatform, 
+				oculusSdkPlatform, 
                 steamSdkPlatform,
-                //xboxSdkPlatform
+                xboxSdkPlatform
                 ];
 
 			searchEngine = new SearchGameEngine ();
@@ -124,6 +124,8 @@ namespace UEVR
 				var directoryPath = platform.GetGameDirectoryPath(e);
 				var searchResult = await searchEngine.SearchAsync(directoryPath);
 
+				newGame.IsVR = platform.IsVrGame(e);
+
 				if (searchResult != null) {
 					newGame.Engine = searchResult.Engine;
 					newGame.EngineVersion = searchResult.Version;
@@ -145,7 +147,7 @@ namespace UEVR
 				OnPluginManifestAdded (newGame);
 
 				if (platform.Name == SteamSdk.SdkIdentifier) {
-					//RefreshGameInfoFromSteamId(newGame, newGame.AppId);
+					//await RefreshGameInfoFromSteamId(newGame, newGame.AppId);
 				}
 
 				Games.Add (newGame);
@@ -155,11 +157,12 @@ namespace UEVR
 
 		}
 
-		static void RefreshGameInfoFromSteamId (GameInfo newGame, string steamAppId)
+		static async Task RefreshGameInfoFromSteamId (GameInfo newGame, string steamAppId)
 		{
 			try {
-				var details = steamSdkPlatform.Api.GetSteamAppGameDetails(steamAppId)
-			  .FirstOrDefault().Value?.Data;
+
+				var response = steamSdkPlatform.Api.GetSteamAppGameDetails(steamAppId);
+				var details = response?.Data;
 				if (details != null) {
 					newGame.DetailedDescription = details.DetailedDescription;
 					newGame.ShortDescription = details.ShortDescription;

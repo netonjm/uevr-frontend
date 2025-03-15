@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Windows.Media;
+using UGMVR;
 
 namespace UEVR
 {
@@ -18,6 +19,8 @@ namespace UEVR
 			SetGame (hify);
 		}
 
+		public bool IsUnrealGame => game.IsUnrealGame;
+
 		public void SetGame (GameInfo game)
 		{
 			this.game = game;
@@ -25,7 +28,7 @@ namespace UEVR
 			try 
 			{
 				var platform = AppEnvironment.GetSdkPlatform(game.Wrapper);
-				this.Provider = platform.Name;
+				this.Provider = platform.Name.ToUpper();
 				// this.Engine = this.game.Executable.Engine.Brand;
 
 				this.Image = AppEnvironment.GetEngineImage (game); ;
